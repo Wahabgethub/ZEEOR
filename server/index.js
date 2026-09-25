@@ -83,6 +83,42 @@ app.get('/api/products/:id', (req, res) => {
   const product = catalogItems(readStore()).find((p) => p.id === req.params.id || p.slug === req.params.id);
   product ? res.json(publicProduct(product)) : res.status(404).json({ error: 'Product not found' });
 });
+
+// Rich share preview for one product — WhatsApp/Facebook/Twitter crawlers read the og:* tags here
+// and render the full photo + "Shop Now" card; real visitors bounce straight into the SPA below.
+const esc = (str) => String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const shareMoney = (value) => `Rs ${Number(value || 0).toLocaleString('en-PK')}`;
+app.get('/share/:id', (req, res) => {
+  const product = catalogItems(readStore()).find((p) => p.id === req.params.id || p.slug === req.params.id);
+  if (!product) return res.redirect('/');
+  const pub = publicProduct(product);
+  const siteUrl = `${req.protocol}://${req.get('host')}`;
+  const image = pub.images?.[0] || `${siteUrl}/zeeor-editorial.jpg`;
+  const price = shareMoney(pub.salePrice || pub.price);
+  const title = `${pub.name} — ZEEOR`;
+  const description = `${price} · Shop now on ZEEOR — wear without limits.`;
+  const productUrl = `${siteUrl}/#product/${pub.id}`;
+  res.set('Content-Type', 'text/html').send(`<!doctype html><html lang="en"><head><meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>${esc(title)}</title>
+<meta property="og:type" content="product" />
+<meta property="og:site_name" content="ZEEOR" />
+<meta property="og:title" content="${esc(title)}" />
+<meta property="og:description" content="${esc(description)}" />
+<meta property="og:image" content="${esc(image)}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1500" />
+<meta property="og:url" content="${esc(productUrl)}" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="${esc(title)}" />
+<meta name="twitter:description" content="${esc(description)}" />
+<meta name="twitter:image" content="${esc(image)}" />
+<meta http-equiv="refresh" content="0; url=${esc(productUrl)}" />
+<style>body{margin:0;font-family:Arial,sans-serif;background:#0b1714;color:#f2efe6;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center}.card{max-width:420px;padding:30px}img{width:100%;max-height:520px;object-fit:cover;border-radius:4px;margin-bottom:24px}h1{font-size:20px;margin:0 0 8px}p{color:#cbbd91;font-size:14px;margin:0 0 24px}a{display:inline-block;background:#274d3d;color:#f2efe6;padding:14px 28px;text-decoration:none;letter-spacing:.08em;text-transform:uppercase;font-size:12px;border-radius:2px}</style></head>
+<body><div class="card"><img src="${esc(image)}" alt="${esc(pub.name)}" /><h1>${esc(pub.name)}</h1><p>${esc(price)}</p><a href="${esc(productUrl)}">Shop Now ↗</a></div>
+<script>location.replace(${JSON.stringify(productUrl)});</script>
+</body></html>`);
+});
 app.post('/api/auth/login', (req, res) => {
   const user = authenticate(String(req.body.username || ''), String(req.body.password || ''));
   user ? res.json({ token: signUser(user), user }) : res.status(401).json({ error: 'Invalid credentials' });
