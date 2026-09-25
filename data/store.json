@@ -1,0 +1,225 @@
+{
+  "products": [
+    {
+      "name": "LIBAAS BY HAYA CLOTHES ",
+      "category": "Women",
+      "price": 7000,
+      "salePrice": 3500,
+      "description": "A considered ZEEOR piece, made for movement.",
+      "shortDescription": "Designed without limits.",
+      "collection": "New Release",
+      "gender": "Women",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "colors": [
+        "Black"
+      ],
+      "inventory": {
+        "Black-S": 4,
+        "Black-M": 5,
+        "Black-L": 5,
+        "Black-XL": 5
+      },
+      "images": [
+        "https://res.cloudinary.com/tlcphz2l/image/upload/v1790062456/zeeor/wuinguhzoquj16s7qplp.png"
+      ],
+      "imagePublicIds": [
+        "zeeor/wuinguhzoquj16s7qplp"
+      ],
+      "flags": {
+        "featured": false,
+        "new": true,
+        "bestseller": false,
+        "sale": true
+      },
+      "published": true,
+      "id": "p-1790062455340",
+      "slug": "libaas-by-haya-clothes-"
+    }
+  ],
+  "orders": [
+    {
+      "id": "Z-03008669",
+      "createdAt": "2026-09-22T18:50:08.669Z",
+      "customer": {
+        "name": "MUHAMMAD FAIQUE",
+        "email": "faique123456zzz@gmail.com",
+        "phone": "03400301771",
+        "address": "sawai road",
+        "city": "Shahdadpur",
+        "province": "punjab",
+        "postal": "68030",
+        "payment": "cod",
+        "notes": ""
+      },
+      "items": [
+        {
+          "productId": "p-1790062455340",
+          "name": "LIBAAS BY HAYA CLOTHES ",
+          "size": "S",
+          "color": "Black",
+          "quantity": 1,
+          "unitPrice": 3500
+        }
+      ],
+      "subtotal": 3500,
+      "discount": 0,
+      "shipping": 300,
+      "total": 3800,
+      "payment": "cod",
+      "status": "Cancelled",
+      "tracking": ""
+    }
+  ],
+  "customers": [],
+  "resellers": [
+    {
+      "id": "r-zeeor-partner",
+      "username": "zeeor-partner",
+      "displayName": "ZEEOR Partner",
+      "passwordHash": "$2a$12$8NvsPpY227/gIc3Cg222zuH9ZwBWef.Bv3KwChqfsA4XbFBqgh/ou",
+      "listings": [
+        {
+          "id": "l-1790049447523",
+          "title": "Test Kurta",
+          "price": 99,
+          "category": "Trousers",
+          "sizes": [
+            "S",
+            "M",
+            "L",
+            "XL"
+          ],
+          "colors": [
+            "Black"
+          ],
+          "inventory": {
+            "Black-S": 5,
+            "Black-M": 5,
+            "Black-L": 5,
+            "Black-XL": 5
+          },
+          "images": [],
+          "active": true,
+          "createdAt": "2026-09-22T03:57:27.523Z"
+        }
+      ],
+      "createdAt": "2026-09-10T07:01:15.254Z",
+      "active": true
+    },
+    {
+      "id": "r-1790053854011",
+      "username": "faique",
+      "displayName": "faiq",
+      "passwordHash": "$2a$12$XJxFaMSVRFAHmQgMdgkXSub7m5kimnsjco0K4wm55DbSJiaRpkAs.",
+      "active": true,
+      "listings": [
+        {
+          "id": "l-1790225684308",
+          "title": "HYAAA",
+          "price": 3456,
+          "salePrice": 1234,
+          "category": "Women",
+          "delivery": "Local delivery",
+          "colorBlocks": [
+            {
+              "name": "GREEN",
+              "images": [
+                "https://res.cloudinary.com/tlcphz2l/image/upload/v1790225684/zeeor/ydrsk5ulpyitta2k3pyc.png",
+                "https://res.cloudinary.com/tlcphz2l/image/upload/v1790225684/zeeor/rjlmwazs8loxk1rxy67b.png"
+              ],
+              "imagePublicIds": [
+                "zeeor/ydrsk5ulpyitta2k3pyc",
+                "zeeor/rjlmwazs8loxk1rxy67b"
+              ],
+              "stocks": {
+                "M": "1"
+              }
+            }
+          ],
+          "sizes": [
+            "M"
+          ],
+          "colors": [
+            "GREEN"
+          ],
+          "inventory": {
+            "GREEN-M": 1
+          },
+          "galleryByColor": {
+            "GREEN": [
+              "https://res.cloudinary.com/tlcphz2l/image/upload/v1790225684/zeeor/ydrsk5ulpyitta2k3pyc.png",
+              "https://res.cloudinary.com/tlcphz2l/image/upload/v1790225684/zeeor/rjlmwazs8loxk1rxy67b.png"
+            ]
+          },
+          "imagePublicIdsByColor": {
+            "GREEN": [
+              "zeeor/ydrsk5ulpyitta2k3pyc",
+              "zeeor/rjlmwazs8loxk1rxy67b"
+            ]
+          },
+          "images": [
+            "https://res.cloudinary.com/tlcphz2l/image/upload/v1790225684/zeeor/ydrsk5ulpyitta2k3pyc.png",
+            "https://res.cloudinary.com/tlcphz2l/image/upload/v1790225684/zeeor/rjlmwazs8loxk1rxy67b.png"
+          ],
+          "imagePublicIds": [
+            "zeeor/ydrsk5ulpyitta2k3pyc",
+            "zeeor/rjlmwazs8loxk1rxy67b"
+          ],
+          "active": true,
+          "createdAt": "2026-09-24T04:54:44.308Z"
+        }
+      ],
+      "createdAt": "2026-09-22T05:10:54.441Z"
+    }
+  ],
+  "cms": {
+    "eyebrow": "DROP 01 — THE CITY AFTER DARK",
+    "headline": "FORM FOLLOWS\nFREEDOM.",
+    "body": "An editorial wardrobe for movement, made without limits.",
+    "heroVideo": "",
+    "heroImage": "https://res.cloudinary.com/tlcphz2l/image/upload/v1790053764/zeeor/ly53uy5bcyvzmw11axrw.jpg",
+    "announcement": "Free delivery across Pakistan on orders over Rs 5,000"
+  },
+  "coupons": [
+    {
+      "code": "WELCOME10",
+      "type": "percent",
+      "value": 10,
+      "minOrder": 75,
+      "active": true
+    }
+  ],
+  "categories": [
+    "Women",
+    "Men",
+    "Hoodies",
+    "Trousers",
+    "T-Shirts",
+    "Outerwear",
+    "Accessories",
+    "Knitwear"
+  ],
+  "settings": {
+    "currency": "PKR",
+    "freeShippingThreshold": 6000,
+    "shippingFlat": 300,
+    "maintenance": false,
+    "ownerWhatsapp": "03400301771"
+  },
+  "notifications": [
+    {
+      "id": "n-1790302339922",
+      "resellerId": "r-1790053854011",
+      "message": "NEW ORDER RECEIVED",
+      "createdAt": "2026-09-25T02:12:19.922Z",
+      "readBy": [
+        "r-1790053854011"
+      ]
+    }
+  ]
+}

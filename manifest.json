@@ -1,0 +1,15 @@
+{
+  "name": "ZEEOR — Wear Without Limits",
+  "short_name": "ZEEOR",
+  "description": "Premium fashion for movement, made without limits.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c211c",
+  "theme_color": "#0c211c",
+  "icons": [{
+    "src": "/zeeor-logo.png",
+    "sizes": "1080x1080",
+    "type": "image/png",
+    "purpose": "any maskable"
+  }]
+}
