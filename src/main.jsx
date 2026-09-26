@@ -60,7 +60,7 @@ function App() {
 
   return <div className="app-shell">
     <Announcement text={cms?.announcement} />
-    <Header route={route} categories={categories} cartCount={cart.reduce((a, b) => a + b.quantity, 0)} wishlistCount={wishlist.length} user={user} search={search} setSearch={setSearch} go={go} logout={logout} />
+    <Header route={route} categories={categories} products={products} cartCount={cart.reduce((a, b) => a + b.quantity, 0)} wishlistCount={wishlist.length} user={user} search={search} setSearch={setSearch} go={go} logout={logout} />
     <main>
       {route === 'home' && <Home cms={cms} products={products} openProduct={openProduct} addToCart={addToCart} go={go} />}
       {route.startsWith('shop') && <Shop products={products} openProduct={openProduct} addToCart={addToCart} search={search} initialCategory={decodeURIComponent(route.split('/')[1] || 'All')} />}
@@ -84,18 +84,25 @@ function App() {
 function GlobalWhatsApp() { const [number, setNumber] = useState(''); useEffect(() => { request('/api/settings').then((s) => setNumber(s.ownerWhatsapp || '')).catch(() => {}); }, []); if (!number) return null; const link = `https://wa.me/${number}?text=${encodeURIComponent('Hi ZEEOR! I have a question.')}`; return <a className="global-whatsapp" href={link} target="_blank" rel="noreferrer" aria-label="Chat with ZEEOR on WhatsApp"><svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M12.04 2c-5.5 0-9.96 4.46-9.96 9.96 0 1.76.46 3.47 1.33 4.98L2 22l5.2-1.36c1.46.8 3.1 1.22 4.83 1.22h.01c5.5 0 9.96-4.46 9.96-9.96C22 6.46 17.55 2 12.04 2zm0 18.2h-.01c-1.5 0-2.97-.4-4.25-1.16l-.3-.18-3.16.83.84-3.08-.2-.32a8.23 8.23 0 0 1-1.27-4.36c0-4.55 3.7-8.24 8.26-8.24 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.42 5.83c0 4.55-3.7 8.24-8.26 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.7-.8-.23-.08-.4-.12-.56.13-.17.25-.64.8-.79.96-.14.17-.29.19-.54.06-.25-.12-1.04-.38-1.98-1.22-.73-.65-1.23-1.46-1.37-1.7-.14-.25-.02-.38.11-.5.11-.11.25-.29.37-.43.12-.14.16-.25.25-.41.08-.17.04-.31-.02-.44-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.87.85-.87 2.08s.89 2.42 1.02 2.59c.12.17 1.75 2.67 4.24 3.75.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.08.15-1.18-.06-.1-.23-.16-.48-.28z"/></svg></a>; }
 
 function Announcement({ text }) { return <div className="announcement">{text || 'Complimentary delivery on orders over $150'} <span>↗</span></div>; }
-function Header({ route, categories, cartCount, wishlistCount, user, search, setSearch, go, logout }) {
+function Header({ route, categories, products, cartCount, wishlistCount, user, search, setSearch, go, logout }) {
   const [menu, setMenu] = useState(false); const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => { document.body.style.overflow = menu ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [menu]);
+  const suggestions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    return (products || []).filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || (p.tags || []).join(' ').toLowerCase().includes(q)).slice(0, 6);
+  }, [search, products]);
+  const goToProduct = (p) => { go(`product/${p.id}`); setSearchOpen(false); setSearch(''); };
+  const seeAll = () => { go('shop'); setSearchOpen(false); };
   return <header className="site-header">
     <div className="header-left">
       <button className="mobile-menu" onClick={() => setMenu(!menu)} aria-label="Menu">{menu ? '×' : '☰'}</button>
       <button className="icon-button" onClick={() => setSearchOpen(!searchOpen)} aria-label="Search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg></button>
-      {route !== 'home' && <button className="home-button" onClick={() => go('home')} aria-label="Go home"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.1"><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10v9.5a1 1 0 0 0 1 1H9.5v-6h5v6H17.5a1 1 0 0 0 1-1V10" /></svg></button>}
     </div>
     <button className="brand-lockup" onClick={() => go('home')}><span className="brand-word">ZEEOR</span></button>
     {menu && <button className="nav-backdrop" onClick={() => setMenu(false)} aria-label="Close menu" />}
     <nav className={`main-nav ${menu ? 'open' : ''}`}>
+      <button className={route === 'home' ? 'active' : ''} onClick={() => { go('home'); setMenu(false); }}>Home</button>
       <button className={route === 'shop' ? 'active' : ''} onClick={() => { go('shop'); setMenu(false); }}>Shop</button>
       {categories.map((category) => <button className={`nav-category ${route === `shop/${encodeURIComponent(category)}` ? 'active' : ''}`} key={category} onClick={() => { go(`shop/${encodeURIComponent(category)}`); setMenu(false); }}>{category}</button>)}
       <button onClick={() => { go('shop?new'); setMenu(false); }}>New Arrivals</button>
@@ -104,10 +111,18 @@ function Header({ route, categories, cartCount, wishlistCount, user, search, set
     </nav>
     <div className="header-actions">
       <button className="text-action" onClick={() => go(user ? (user.role === 'owner' ? 'owner' : user.role === 'reseller' ? 'reseller' : 'account') : 'login')}>{user ? user.username : 'Account'}</button>
-      <button className="icon-button" onClick={() => go('wishlist')} aria-label="Wishlist"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 21s-6.7-4.1-9.3-8.2C1 9.9 1.8 6.4 4.7 5.1c2.2-1 4.6-.3 5.9 1.5.4.6 1 .6 1.4 0 1.3-1.8 3.7-2.5 5.9-1.5 2.9 1.3 3.7 4.8 2 7.7C18.7 16.9 12 21 12 21z" /></svg>{wishlistCount > 0 && <sup>{wishlistCount}</sup>}</button>
+      <button className="icon-button" onClick={() => go('wishlist')} aria-label="Wishlist"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>{wishlistCount > 0 && <sup>{wishlistCount}</sup>}</button>
       <button className="icon-button cart-button" onClick={() => go('cart')} aria-label="Bag"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 7h12l1 14H5L6 7z" /><path d="M9 10V6a3 3 0 0 1 6 0v4" /></svg>{cartCount > 0 && <sup>{cartCount}</sup>}</button>
     </div>
-    {searchOpen && <form className="searchbar" onSubmit={(e) => { e.preventDefault(); go('shop'); setSearchOpen(false); }}><input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search the collection" /><span>Press Enter ↵</span></form>}
+    {searchOpen && <>
+      <button className="search-backdrop" onClick={() => setSearchOpen(false)} aria-label="Close search" />
+      <form className="searchbar" onSubmit={(e) => { e.preventDefault(); seeAll(); }}><input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search the collection" /><span>Press Enter ↵</span></form>
+      {search.trim() && <div className="search-suggestions">
+        {suggestions.length ? suggestions.map((p) => <button key={p.id} onClick={() => goToProduct(p)}><img src={p.images?.[0] || imgFallback} alt="" /><span>{p.name}</span><small>{money(p.salePrice || p.price)}</small></button>)
+          : <p className="no-suggestions">No matches for "{search}"</p>}
+        <button className="see-all" onClick={seeAll}>See all results for "{search}" ↗</button>
+      </div>}
+    </>}
   </header>;
 }
 
