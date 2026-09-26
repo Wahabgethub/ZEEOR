@@ -90,10 +90,10 @@ function Header({ route, categories, cartCount, wishlistCount, user, search, set
   return <header className="site-header">
     <div className="header-left">
       <button className="mobile-menu" onClick={() => setMenu(!menu)} aria-label="Menu">{menu ? '×' : '☰'}</button>
-      {route !== 'home' && <button className="back-button" onClick={() => window.history.length > 1 ? window.history.back() : go('home')} aria-label="Go back"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M19 12H5M11 18l-6-6 6-6" /></svg></button>}
-      <button className="brand-lockup" onClick={() => go('home')}><img src="/zeeor-logo.png" alt="ZEEOR logo" /><span>WEAR WITHOUT LIMITS.</span></button>
+      <button className="icon-button" onClick={() => setSearchOpen(!searchOpen)} aria-label="Search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg></button>
+      {route !== 'home' && <button className="home-button" onClick={() => go('home')} aria-label="Go home"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.1"><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10v9.5a1 1 0 0 0 1 1H9.5v-6h5v6H17.5a1 1 0 0 0 1-1V10" /></svg></button>}
     </div>
-    <div className="header-center" />
+    <button className="brand-lockup" onClick={() => go('home')}><span className="brand-word">ZEEOR</span></button>
     {menu && <button className="nav-backdrop" onClick={() => setMenu(false)} aria-label="Close menu" />}
     <nav className={`main-nav ${menu ? 'open' : ''}`}>
       <button className={route === 'shop' ? 'active' : ''} onClick={() => { go('shop'); setMenu(false); }}>Shop</button>
@@ -103,9 +103,8 @@ function Header({ route, categories, cartCount, wishlistCount, user, search, set
       <button onClick={() => { go('about'); setMenu(false); }}>The Journal</button>
     </nav>
     <div className="header-actions">
-      <button className="icon-button" onClick={() => setSearchOpen(!searchOpen)} aria-label="Search"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg></button>
       <button className="text-action" onClick={() => go(user ? (user.role === 'owner' ? 'owner' : user.role === 'reseller' ? 'reseller' : 'account') : 'login')}>{user ? user.username : 'Account'}</button>
-      <button className="icon-button" onClick={() => go('wishlist')} aria-label="Wishlist"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20s-7-4.35-9.5-8.5C.7 8 2 4.5 5.5 4c2-.28 3.7.9 4.5 2.2C10.8 4.9 12.5 3.72 14.5 4c3.5.5 4.8 4 3 7.5C19 15.65 12 20 12 20z" /></svg>{wishlistCount > 0 && <sup>{wishlistCount}</sup>}</button>
+      <button className="icon-button" onClick={() => go('wishlist')} aria-label="Wishlist"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 21s-6.7-4.1-9.3-8.2C1 9.9 1.8 6.4 4.7 5.1c2.2-1 4.6-.3 5.9 1.5.4.6 1 .6 1.4 0 1.3-1.8 3.7-2.5 5.9-1.5 2.9 1.3 3.7 4.8 2 7.7C18.7 16.9 12 21 12 21z" /></svg>{wishlistCount > 0 && <sup>{wishlistCount}</sup>}</button>
       <button className="icon-button cart-button" onClick={() => go('cart')} aria-label="Bag"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 7h12l1 14H5L6 7z" /><path d="M9 10V6a3 3 0 0 1 6 0v4" /></svg>{cartCount > 0 && <sup>{cartCount}</sup>}</button>
     </div>
     {searchOpen && <form className="searchbar" onSubmit={(e) => { e.preventDefault(); go('shop'); setSearchOpen(false); }}><input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search the collection" /><span>Press Enter ↵</span></form>}
