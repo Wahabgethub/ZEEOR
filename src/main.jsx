@@ -96,12 +96,13 @@ function Header({ route, categories, products, cartCount, wishlistCount, user, s
   const seeAll = () => { go('shop'); setSearchOpen(false); };
   return <header className="site-header">
     <div className="header-left">
-      <button className="mobile-menu" onClick={() => setMenu(!menu)} aria-label="Menu">{menu ? '×' : '☰'}</button>
+      <button className="mobile-menu" onClick={() => setMenu(!menu)} aria-label="Menu">{menu ? <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg> : <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg>}</button>
       <button className="icon-button" onClick={() => setSearchOpen(!searchOpen)} aria-label="Search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg></button>
     </div>
     <button className="brand-lockup" onClick={() => go('home')}><span className="brand-word">ZEEOR</span></button>
     {menu && <button className="nav-backdrop" onClick={() => setMenu(false)} aria-label="Close menu" />}
     <nav className={`main-nav ${menu ? 'open' : ''}`}>
+      <button className="nav-close" onClick={() => setMenu(false)} aria-label="Close menu">×</button>
       <button className={route === 'home' ? 'active' : ''} onClick={() => { go('home'); setMenu(false); }}>Home</button>
       <button className={route === 'shop' ? 'active' : ''} onClick={() => { go('shop'); setMenu(false); }}>Shop</button>
       {categories.map((category) => <button className={`nav-category ${route === `shop/${encodeURIComponent(category)}` ? 'active' : ''}`} key={category} onClick={() => { go(`shop/${encodeURIComponent(category)}`); setMenu(false); }}>{category}</button>)}
@@ -140,7 +141,7 @@ function Home({ cms, products, openProduct, addToCart, go }) {
     </section>
     <section className="manifesto"><div className="section-kicker">01 — THE ZEEOR CODE</div><div className="manifesto-copy"><h2>Made for the <em>in-between.</em></h2><p>Tailored for the moment after the plan changes. ZEEOR is a quiet collision of utility, restraint and instinct — considered pieces that keep pace with the life you actually live.</p><button className="text-link" onClick={() => go('about')}>Read our story <span>↗</span></button></div><div className="manifesto-vertical">EST. 2024 / EVERYWHERE</div></section>
     <section className="featured"><div className="section-heading"><div><span className="section-kicker">02 — SELECTED PIECES</span><h2>The edit</h2></div><button className="text-link" onClick={() => go('shop')}>View all pieces <span>↗</span></button></div><div className="product-grid featured-grid">{products.filter((p) => p.flags.featured).sort((a, b) => (a.featuredPosition || 99) - (b.featuredPosition || 99)).slice(0, 5).map((p, index) => <ProductCard key={p.id} product={p} index={index} openProduct={openProduct} addToCart={addToCart} />)}</div></section>
-    <section className="split-banner"><div className="split-image" style={{ backgroundImage: 'url(/zeeor-editorial.jpg)' }} /><div className="split-copy"><span className="section-kicker">03 — CONCRETE FORMS</span><h2>Utility, with a softer edge.</h2><p>Fabrics that hold their shape. Silhouettes that leave room to move.</p><button className="primary-button" onClick={() => go('shop')}>Discover the collection <span>↗</span></button></div></section>
+    <section className="split-banner no-image"><div className="split-copy"><span className="section-kicker">03 — CONCRETE FORMS</span><h2>Utility, with a softer edge.</h2><p>Fabrics that hold their shape. Silhouettes that leave room to move.</p><button className="primary-button" onClick={() => go('shop')}>Discover the collection <span>↗</span></button></div></section>
     <section className="newsletter"><span className="section-kicker">04 — THE ZEEOR LETTER</span><h2>Stay in the loop.</h2><p>New drops, studio notes and the occasional city guide. No noise.</p><form onSubmit={(e) => { e.preventDefault(); e.currentTarget.reset(); }}><input required type="email" placeholder="Your email address" /><button type="submit">Subscribe <span>↗</span></button></form></section>
   </>;
 }
