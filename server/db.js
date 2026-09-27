@@ -57,3 +57,6 @@ export function visibleCategoryNames(store) {
 }
 export function generalCategoryNames(store) { return categoryList(store).filter((c) => c.scope !== 'private').map((c) => c.name); }
 export function resellerCategoryNames(store, resellerId) { return categoryList(store).filter((c) => c.scope !== 'private' || c.resellerId === resellerId).map((c) => c.name); }
+
+export function ensureCommentsShape() { mutateStore((store) => { if (!Array.isArray(store.comments)) store.comments = []; return store; }); }
+export function publicComment(c) { return { id: c.id, productId: c.productId, name: c.name, text: c.text, createdAt: c.createdAt }; }

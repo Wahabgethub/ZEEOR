@@ -5,7 +5,7 @@ import multer from 'multer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authenticate, ensureDefaultResellers, hashPassword, requireAuth, requireRole, signUser } from './auth.js';
-import { categoryList, ensureCategoriesShape, generalCategoryNames, mutateStore, productTotalStock, publicProduct, readStore, resellerCategoryNames, visibleCategoryNames } from './db.js';
+import { categoryList, ensureCategoriesShape, ensureCommentsShape, generalCategoryNames, mutateStore, productTotalStock, publicComment, publicProduct, readStore, resellerCategoryNames, visibleCategoryNames } from './db.js';
 import { deleteImage, uploadImage } from './imageStorage.js';
 
 const app = express();
@@ -13,6 +13,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 const root = path.dirname(fileURLToPath(import.meta.url));
 ensureDefaultResellers();
 ensureCategoriesShape();
+ensureCommentsShape();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -83,6 +84,37 @@ app.get('/api/products', (req, res) => {
 app.get('/api/products/:id', (req, res) => {
   const product = catalogItems(readStore()).find((p) => p.id === req.params.id || p.slug === req.params.id);
   product ? res.json(publicProduct(product)) : res.status(404).json({ error: 'Product not found' });
+});
+
+// Public comments — visible to everyone (name + text only). Email/phone are collected but only the owner ever sees them.
+app.get('/api/products/:id/comments', (req, res) => {
+  const list = (readStore().comments || []).filter((c) => c.productId === req.params.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json(list.map(publicComment));
+});
+app.post('/api/products/:id/comments', (req, res) => {
+  const text = String(req.body.text || '').trim();
+  if (!text) return res.status(400).json({ error: 'Write a comment before submitting' });
+  const email = String(req.body.email || '').trim();
+  const phone = String(req.body.phone || '').trim();
+  if (!email && !phone) return res.status(400).json({ error: 'Please share an email or WhatsApp number so the studio can follow up if needed' });
+  const comment = { id: `cm-${Date.now()}`, productId: req.params.id, name: String(req.body.name || '').trim() || 'Guest', email, phone, text, createdAt: new Date().toISOString() };
+  mutateStore((store) => { store.comments = [...(store.comments || []), comment]; return store; });
+  res.status(201).json(publicComment(comment));
+});
+// Owner-only: full detail including email/phone, across every product, for follow-up.
+app.get('/api/admin/comments', requireAuth, requireRole('owner'), (_req, res) => {
+  const store = readStore();
+  const productName = Object.fromEntries(catalogItems(store).map((p) => [p.id, p.name]));
+  res.json((store.comments || []).slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map((c) => ({ ...c, productName: productName[c.productId] || 'Deleted product' })));
+});
+app.patch('/api/admin/comments/:id', requireAuth, requireRole('owner'), (req, res) => {
+  let updated;
+  mutateStore((store) => { const comment = (store.comments || []).find((c) => c.id === req.params.id); if (comment && req.body.text !== undefined) comment.text = String(req.body.text).trim(); updated = comment; return store; });
+  updated ? res.json(updated) : res.status(404).json({ error: 'Comment not found' });
+});
+app.delete('/api/admin/comments/:id', requireAuth, requireRole('owner'), (req, res) => {
+  mutateStore((store) => { store.comments = (store.comments || []).filter((c) => c.id !== req.params.id); return store; });
+  res.json({ ok: true });
 });
 
 // Rich share preview for one product — WhatsApp/Facebook/Twitter crawlers read the og:* tags here
