@@ -10,6 +10,11 @@ import { deleteImage, uploadImage } from './imageStorage.js';
 import { createSeoRouter } from './seoRoutes.js';
 
 const app = express();
+// Behind Cloudflare/nginx, req.protocol otherwise always reads 'http'. This
+// makes Express trust X-Forwarded-Proto so req.protocol is correct — used
+// only by the new SEO routes' fallback URL detection (server/seo.js prefers
+// the SITE_URL env var; this is just a safety net).
+app.set('trust proxy', true);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 5 } });
 const root = path.dirname(fileURLToPath(import.meta.url));
 ensureDefaultResellers();

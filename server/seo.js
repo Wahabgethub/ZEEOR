@@ -16,7 +16,7 @@ export const slugify = (str) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-export const siteUrlFrom = (req) => `${req.protocol}://${req.get('host')}`;
+export const siteUrlFrom = (req) => process.env.SITE_URL || `${req.protocol}://${req.get('host')}`;
 
 const money = (value) => `Rs ${Number(value || 0).toLocaleString('en-PK')}`;
 
