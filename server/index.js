@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { authenticate, ensureDefaultResellers, hashPassword, requireAuth, requireRole, signUser } from './auth.js';
 import { categoryList, ensureCategoriesShape, ensureCommentsShape, generalCategoryNames, mutateStore, productTotalStock, publicComment, publicProduct, readStore, resellerCategoryNames, visibleCategoryNames } from './db.js';
 import { deleteImage, uploadImage } from './imageStorage.js';
+import { createSeoRouter } from './seoRoutes.js';
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 5 } });
@@ -313,6 +314,11 @@ app.delete('/api/reseller/listings/:id/images/:index', requireAuth, requireRole(
 app.post('/api/upload', requireAuth, requireRole('owner', 'reseller'), upload.array('images', 5), async (req, res) => { try { const results = await Promise.all((req.files || []).map((file) => uploadImage(file.buffer))); res.json(results); } catch (error) { res.status(502).json({ error: error.message }); } });
 
 if (process.env.NODE_ENV === 'production') app.use(express.static(path.join(root, '..', 'dist')));
+// SEO layer — sitemap.xml, robots.txt, and crawlable /products/:slug, /stores,
+// /stores/:username, /about-zeeor and /:categorySlug pages. Every route here
+// either serves brand-new content or calls next() so nothing already above
+// or below it changes behaviour.
+app.use(createSeoRouter({ readStore, catalogItems, publicProduct, visibleCategoryNames }));
 app.get('*', (req, res, next) => req.path.startsWith('/api/') ? next() : res.sendFile(path.join(root, '..', 'index.html')));
 const port = Number(process.env.PORT || 4000);
 app.listen(port, '0.0.0.0', () => console.log(`ZEEOR API listening on ${port}`));
