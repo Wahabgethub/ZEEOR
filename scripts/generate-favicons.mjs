@@ -1,13 +1,15 @@
 // Generates the full favicon set Google's favicon crawler and mobile
 // home-screens expect, from the existing public/zeeor-logo.png.
-// One-time (re-run whenever the logo changes).
 //
-//   npm install canvas
+// Uses `jimp` — pure JavaScript, no native compilation, no system
+// libraries (cairo/pixman/pango) required. Works on any machine.
+//
+//   npm install jimp@0.22.12
 //   node scripts/generate-favicons.mjs
 //
 // Output lands in public/ so `npm run build` copies it straight into dist/.
 
-import { createCanvas, loadImage } from 'canvas';
+import Jimp from 'jimp';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,35 +26,20 @@ async function run() {
     console.error(`✗ Source logo not found at ${sourceLogo}`);
     process.exit(1);
   }
-  const image = await loadImage(sourceLogo);
+  const base = await Jimp.read(sourceLogo);
 
-  const renderSquare = (size) => {
-    const canvas = createCanvas(size, size);
-    const ctx = canvas.getContext('2d');
-    // Emerald background so transparent corners never render as a white box
-    // in browser tabs / dark home-screens.
-    ctx.fillStyle = '#0A2417';
-    ctx.fillRect(0, 0, size, size);
-    ctx.drawImage(image, 0, 0, size, size);
-    return canvas.toBuffer('image/png');
+  const renderSquare = async (size, outPath) => {
+    const img = base.clone().cover(size, size);
+    await img.writeAsync(outPath);
+    console.log(`✓ ${path.relative(process.cwd(), outPath)}`);
   };
 
   for (const size of sizes) {
-    const buffer = renderSquare(size);
-    const outPath = path.join(publicDir, `favicon-${size}x${size}.png`);
-    fs.writeFileSync(outPath, buffer);
-    console.log(`✓ ${path.relative(process.cwd(), outPath)}`);
+    await renderSquare(size, path.join(publicDir, `favicon-${size}x${size}.png`));
   }
-
-  const appleBuffer = renderSquare(appleTouchSize);
-  fs.writeFileSync(path.join(publicDir, 'apple-touch-icon.png'), appleBuffer);
-  console.log('✓ public/apple-touch-icon.png');
-
-  // android-chrome-512x512.png is what manifest.json points to for PWA installs
-  fs.writeFileSync(path.join(publicDir, 'android-chrome-512x512.png'), renderSquare(512));
-  console.log('✓ public/android-chrome-512x512.png');
-  fs.writeFileSync(path.join(publicDir, 'android-chrome-192x192.png'), renderSquare(192));
-  console.log('✓ public/android-chrome-192x192.png');
+  await renderSquare(appleTouchSize, path.join(publicDir, 'apple-touch-icon.png'));
+  await renderSquare(512, path.join(publicDir, 'android-chrome-512x512.png'));
+  await renderSquare(192, path.join(publicDir, 'android-chrome-192x192.png'));
 
   console.log('\n✅ Favicon set generated. Run `npm run build` to ship it.');
 }
