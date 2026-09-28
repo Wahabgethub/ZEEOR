@@ -171,3 +171,12 @@
 .subcat-chip button{width:22px;height:22px;border-radius:50%;font-size:12px;color:var(--forest)}
 .subcat-chip button:hover{background:var(--forest);color:var(--cream)}
 @media(max-width:900px){.subcat-panel{padding-left:0}.category-order-row{grid-template-columns:auto 1fr}.category-actions{grid-column:1/-1;justify-content:flex-start}}
+
+/* ===================== batch25 ===================== */
+.order-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.category-actions .table-action{border:1px solid var(--line);border-radius:999px;padding:7px 14px;color:var(--forest);background:transparent}
+.category-actions .table-action:hover{background:var(--forest);color:var(--cream);border-color:var(--forest)}
+.subcat-panel{padding:4px 0 22px 40px;border-bottom:1px solid var(--line)}
+.subcat-panel .inline-form{max-width:560px}
+.subcat-panel .inline-form .primary-button{white-space:nowrap}
+@media(max-width:900px){.subcat-panel{padding-left:0}.subcat-panel .inline-form{grid-template-columns:1fr}}

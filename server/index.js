@@ -362,6 +362,20 @@ app.patch('/api/admin/products/:id/position', requireAuth, requireRole('owner'),
 app.patch('/api/admin/products/:id/inventory', requireAuth, requireRole('owner'), (req, res) => { let changed; const inventory = req.body.inventory; if (!inventory || typeof inventory !== 'object' || Array.isArray(inventory)) return res.status(400).json({ error: 'Inventory must be an object keyed by color-size' }); mutateStore((store) => { changed = store.products.find((p) => p.id === req.params.id); if (changed) changed.inventory = Object.fromEntries(Object.entries(inventory).map(([key, value]) => [key, Math.max(0, Number(value) || 0)])); return store; }); changed ? res.json(changed) : res.status(404).json({ error: 'Product not found' }); });
 app.delete('/api/admin/products/:id', requireAuth, requireRole('owner'), async (req, res) => { const product = readStore().products.find((p) => p.id === req.params.id); try { await Promise.all((product?.imagePublicIds || []).map((publicId) => deleteImage(publicId))); mutateStore((store) => { store.products = store.products.filter((p) => p.id !== req.params.id); return store; }); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: error.message }); } });
 app.delete('/api/admin/products/:id/images/:index', requireAuth, requireRole('owner'), async (req, res) => { const store = readStore(); const product = store.products.find((p) => p.id === req.params.id); const index = Number(req.params.index); try { await deleteImage(product?.imagePublicIds?.[index]); mutateStore((next) => { const current = next.products.find((p) => p.id === req.params.id); if (current) { current.images = (current.images || []).filter((_url, imageIndex) => imageIndex !== index); current.imagePublicIds = (current.imagePublicIds || []).filter((_id, imageIndex) => imageIndex !== index); } return next; }); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: error.message }); } });
+// Owner can permanently delete any order. It disappears from the database, the owner's Orders/Overview,
+// every seller's order list, and the "New order ..." notifications sellers got for it. Stock is NOT restored:
+// stock is reduced when an order is placed, and sold-out products are auto-removed, so there is nothing safe to give back.
+app.delete('/api/admin/orders/:id', requireAuth, requireRole('owner'), (req, res) => {
+  let found = false;
+  mutateStore((store) => {
+    const before = store.orders.length;
+    store.orders = store.orders.filter((o) => o.id !== req.params.id);
+    found = store.orders.length < before;
+    if (found) store.notifications = (store.notifications || []).filter((n) => !String(n.message || '').includes(`New order ${req.params.id} `));
+    return store;
+  });
+  found ? res.json({ ok: true }) : res.status(404).json({ error: 'Order not found' });
+});
 app.patch('/api/admin/orders/:id', requireAuth, requireRole('owner'), (req, res) => { let changed; mutateStore((store) => { changed = store.orders.find((o) => o.id === req.params.id); if (changed) changed.status = req.body.status; return store; }); changed ? res.json(changed) : res.status(404).json({ error: 'Order not found' }); });
 app.patch('/api/admin/cms', requireAuth, requireRole('owner'), (req, res) => { let cms; if (req.body.heroImage && !(String(req.body.heroImage).startsWith('/') || String(req.body.heroImage).includes('res.cloudinary.com'))) return res.status(400).json({ error: 'Hero images must be local or hosted on Cloudinary' }); mutateStore((store) => { store.cms = { ...store.cms, ...req.body }; cms = store.cms; return store; }); res.json(cms); });
 app.get('/api/admin/resellers', requireAuth, requireRole('owner'), (_req, res) => res.json(readStore().resellers.map(({ passwordHash, ...r }) => r)));
