@@ -190,14 +190,14 @@ ${urls.map((u) => `  <url><loc>${esc(u.loc)}</loc><changefreq>${u.changefreq}</c
   router.get('/about-zeeor', (req, res) => {
     const siteUrl = siteUrlFrom(req);
     const canonical = `${siteUrl}/about-zeeor`;
-    const title = `About ${BRAND} — Pakistan's Multi-Vendor Fashion Marketplace`;
-    const description = `${BRAND} was founded by two Pakistani student entrepreneurs. ${SLOGAN} — shop the main catalog or open your own store on zeeor.shop.`;
+    const title = `About ${BRAND} — A Marketplace Built by Two University Students`;
+    const description = `${BRAND} was founded by two Pakistani university students. Local sellers open their own shops here and sell everyday wear and daily-use items across Pakistan.`;
     const jsonLd = [organizationSchema(siteUrl), aboutPageSchema(siteUrl), breadcrumbSchema(siteUrl, [{ name: 'Home', url: `${siteUrl}/` }, { name: 'About', url: canonical }])];
     const head = `<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><style>${PAGE_STYLE}</style></head>`;
     let html = injectSeo(`${head}<body></body></html>`, { title, description, canonical, jsonLd });
     const body = shell({
       siteUrl, bodyKicker: 'THE STORY', bodyTitle: `About ${BRAND}`,
-      bodyHtml: `<p>ZEEOR is a Pakistani multi-vendor fashion marketplace, founded by two student entrepreneurs. Local shop owners open their own store on zeeor.shop and sell alongside the main ZEEOR catalog — wear without limits.</p><a href="${esc(siteUrl)}/#about" style="display:inline-block;background:#274d3d;color:#f2efe6;padding:13px 26px;text-decoration:none;text-transform:uppercase;letter-spacing:.08em;font-size:12px;border-radius:2px">Read on ZEEOR ↗</a>`
+      bodyHtml: `<p>ZEEOR is a Pakistani online marketplace, founded by two university students. Local sellers open their own shops on zeeor.shop and sell everyday clothing and daily-use items, so customers can find daily wear from many sellers in one place.</p><a href="${esc(siteUrl)}/#about" style="display:inline-block;background:#274d3d;color:#f2efe6;padding:13px 26px;text-decoration:none;text-transform:uppercase;letter-spacing:.08em;font-size:12px;border-radius:2px">Read on ZEEOR ↗</a>`
     });
     html = html.replace('<body></body>', `<body>${body}</body>`);
     res.set('Content-Type', 'text/html').send(html);

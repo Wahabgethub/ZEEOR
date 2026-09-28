@@ -45,7 +45,7 @@ export function organizationSchema(siteUrl) {
     },
     image: `${siteUrl}/zeeor-logo.png`,
     description:
-      'ZEEOR is a Pakistani multi-vendor fashion marketplace — local shop owners open their own store on zeeor.shop and sell alongside the main ZEEOR catalog.',
+      'ZEEOR is a Pakistani online marketplace founded by two university students. Local sellers open their own shops on zeeor.shop and sell everyday clothing and daily-use items to customers across Pakistan.',
     foundingLocation: { '@type': 'Place', name: 'Pakistan' },
     areaServed: { '@type': 'Country', name: 'Pakistan' },
     hasMerchantReturnPolicy: merchantReturnPolicySchema(siteUrl)
@@ -59,7 +59,7 @@ export function websiteSchema(siteUrl) {
     '@id': `${siteUrl}/#website`,
     url: siteUrl,
     name: BRAND,
-    description: `${BRAND} — ${SLOGAN.charAt(0)}${SLOGAN.slice(1).toLowerCase()}. Shop online across Pakistan.`,
+    description: `${BRAND} — Pakistan's online marketplace for everyday wear, built by two university students.`,
     publisher: { '@id': `${siteUrl}/#organization` },
     potentialAction: {
       '@type': 'SearchAction',
@@ -175,7 +175,7 @@ export function aboutPageSchema(siteUrl) {
       name: BRAND,
       slogan: SLOGAN,
       description:
-        'ZEEOR was founded by two Pakistani student entrepreneurs as a multi-vendor fashion marketplace: local sellers open their own shop on zeeor.shop and reach customers across Pakistan alongside the main ZEEOR catalog.',
+        'ZEEOR was founded by two Pakistani university students as an online marketplace: local sellers open their own shops on zeeor.shop and sell everyday clothing and daily-use items to customers across Pakistan.',
       logo: `${siteUrl}/zeeor-logo.png`,
       foundingLocation: { '@type': 'Place', name: 'Pakistan' }
     }
