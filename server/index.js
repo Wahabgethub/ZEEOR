@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { authenticate, ensureDefaultResellers, hashPassword, requireAuth, requireRole, signUser } from './auth.js';
 import { categoryList, ensureCategoriesShape, ensureCommentsShape, generalCategoryNames, mutateStore, productTotalStock, publicComment, publicProduct, readStore, resellerCategoryNames, visibleCategoryNames } from './db.js';
 import { deleteImage, uploadImage } from './imageStorage.js';
-import { createSeoRouter } from './seoRoutes.js';
+import { createSeoRouter, createHomeSeo } from './seoRoutes.js';
 
 const app = express();
 // Behind Cloudflare/nginx, req.protocol otherwise always reads 'http'. This
@@ -318,6 +318,7 @@ app.delete('/api/reseller/listings/:id', requireAuth, requireRole('reseller'), a
 app.delete('/api/reseller/listings/:id/images/:index', requireAuth, requireRole('reseller'), async (req, res) => { const store = readStore(); const owner = store.resellers.find((r) => r.id === req.auth.sub); const listing = owner?.listings.find((l) => l.id === req.params.id); const index = Number(req.params.index); try { await deleteImage(listing?.imagePublicIds?.[index]); mutateStore((next) => { const currentOwner = next.resellers.find((r) => r.id === req.auth.sub); const current = currentOwner?.listings.find((l) => l.id === req.params.id); if (current) { current.images = (current.images || []).filter((_url, imageIndex) => imageIndex !== index); current.imagePublicIds = (current.imagePublicIds || []).filter((_id, imageIndex) => imageIndex !== index); } return next; }); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: error.message }); } });
 app.post('/api/upload', requireAuth, requireRole('owner', 'reseller'), upload.array('images', 5), async (req, res) => { try { const results = await Promise.all((req.files || []).map((file) => uploadImage(file.buffer))); res.json(results); } catch (error) { res.status(502).json({ error: error.message }); } });
 
+app.use(createHomeSeo({ readStore, visibleCategoryNames, distIndexPath: path.join(root, '..', 'dist', 'index.html') }));
 if (process.env.NODE_ENV === 'production') app.use(express.static(path.join(root, '..', 'dist')));
 // SEO layer — sitemap.xml, robots.txt, and crawlable /products/:slug, /stores,
 // /stores/:username, /about-zeeor and /:categorySlug pages. Every route here

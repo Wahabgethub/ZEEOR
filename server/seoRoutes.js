@@ -1,7 +1,8 @@
 import express from 'express';
+import fs from 'node:fs';
 import {
   BRAND, SLOGAN, esc, slugify, siteUrlFrom, money,
-  organizationSchema, breadcrumbSchema,
+  organizationSchema, siteNavigationSchema, breadcrumbSchema,
   productSchema, storeSchema, itemListSchema, collectionPageSchema,
   aboutPageSchema, injectSeo
 } from './seo.js';
@@ -11,6 +12,10 @@ import {
 // derive a stable one here for SEO URLs / the sitemap without touching the
 // listing objects themselves.
 const productSlug = (p) => p.slug || `${slugify(p.title || p.name)}-${String(p.id).slice(-6)}`;
+
+// Owner Studio category names are stored exactly as typed (e.g. "WOMENS"), so
+// titles/schemas display them in normal case; URLs and lookups keep the raw name.
+const titleCase = (str) => String(str || '').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
 const PAGE_STYLE = `body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#0b1714;color:#f2efe6}
 .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
@@ -213,12 +218,13 @@ ${urls.map((u) => `  <url><loc>${esc(u.loc)}</loc><changefreq>${u.changefreq}</c
     const canonical = `${siteUrl}/${slugify(match)}`;
     const appUrl = `${siteUrl}/#shop/${encodeURIComponent(match)}`;
     const items = catalogItems(store).filter((p) => p.published !== false && p.category === match);
-    const title = `${match} — Shop Online in Pakistan | ${BRAND}`;
-    const description = `Shop ${match} online across Pakistan on ${BRAND} — ${items.length} piece${items.length === 1 ? '' : 's'} available, cash on delivery, ${SLOGAN.toLowerCase()}.`;
+    const label = titleCase(match);
+    const title = `${label} — Shop Online in Pakistan | ${BRAND}`;
+    const description = `Shop ${label} online across Pakistan on ${BRAND} — ${items.length} piece${items.length === 1 ? '' : 's'} available, cash on delivery, ${SLOGAN.toLowerCase()}.`;
     const jsonLd = [
-      collectionPageSchema(siteUrl, canonical, match),
-      itemListSchema(canonical, `${match} — ${BRAND}`, items.slice(0, 50).map((p) => ({ url: `${siteUrl}/products/${productSlug(p)}`, name: p.name }))),
-      breadcrumbSchema(siteUrl, [{ name: 'Home', url: `${siteUrl}/` }, { name: match, url: canonical }])
+      collectionPageSchema(siteUrl, canonical, label),
+      itemListSchema(canonical, `${label} — ${BRAND}`, items.slice(0, 50).map((p) => ({ url: `${siteUrl}/products/${productSlug(p)}`, name: p.name }))),
+      breadcrumbSchema(siteUrl, [{ name: 'Home', url: `${siteUrl}/` }, { name: label, url: canonical }])
     ];
     const head = `<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><style>${PAGE_STYLE}</style></head>`;
     let html = injectSeo(`${head}<body></body></html>`, { title, description, canonical, jsonLd });
@@ -226,7 +232,7 @@ ${urls.map((u) => `  <url><loc>${esc(u.loc)}</loc><changefreq>${u.changefreq}</c
       ? `<div class="grid">${items.map((p) => cardHtml(`${siteUrl}/products/${productSlug(p)}`, p.images?.[0] || `${siteUrl}/zeeor-editorial.jpg`, p.name, money(p.salePrice || p.price))).join('')}</div>`
       : `<p class="empty">New pieces are on the way.</p>`;
     const body = shell({
-      siteUrl, bodyKicker: 'ZEEOR CATEGORY', bodyTitle: match,
+      siteUrl, bodyKicker: 'ZEEOR CATEGORY', bodyTitle: label,
       bodyHtml: `${cards}<p style="margin-top:26px"><a href="${esc(appUrl)}" style="color:#cbbd91">Continue in the ${esc(BRAND)} app ↗</a></p><script>location.replace(${JSON.stringify(appUrl)});</script>`
     });
     html = html.replace('<body></body>', `<body>${body}</body>`);
@@ -234,4 +240,31 @@ ${urls.map((u) => `  <url><loc>${esc(u.loc)}</loc><changefreq>${u.changefreq}</c
   });
 
   return router;
+}
+
+
+/**
+ * Homepage only. express.static would otherwise serve dist/index.html as-is,
+ * so this runs BEFORE it: it swaps the static SiteNavigationElement block for
+ * one built from the live category list (new categories appear automatically).
+ * Any problem at all -> next(), i.e. the homepage is served exactly as before.
+ */
+export function createHomeSeo({ readStore, visibleCategoryNames, distIndexPath }) {
+  let cache = { mtime: 0, html: '' };
+  return (req, res, next) => {
+    if (req.method !== 'GET' || req.path !== '/') return next();
+    try {
+      const stat = fs.statSync(distIndexPath);
+      if (stat.mtimeMs !== cache.mtime) cache = { mtime: stat.mtimeMs, html: fs.readFileSync(distIndexPath, 'utf8') };
+      const siteUrl = siteUrlFrom(req);
+      const names = [...visibleCategoryNames(readStore()).map(titleCase), 'Stores'];
+      const nav = `<script type="application/ld+json">${JSON.stringify(siteNavigationSchema(siteUrl, names))}</script>`;
+      const html = cache.html
+        .replace(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g, (m, body) => (body.includes('SiteNavigationElement') ? '' : m))
+        .replace('</head>', `${nav}\n</head>`);
+      res.set('Content-Type', 'text/html; charset=utf-8').set('Cache-Control', 'no-cache').send(html);
+    } catch {
+      next();
+    }
+  };
 }
