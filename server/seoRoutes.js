@@ -111,7 +111,7 @@ ${urls.map((u) => `  <url><loc>${esc(u.loc)}</loc><changefreq>${u.changefreq}</c
     const siteUrl = siteUrlFrom(req);
     const canonical = `${siteUrl}/products/${productSlug(pub)}`;
     const appUrl = `${siteUrl}/#product/${pub.id}`;
-    const image = pub.images?.[0] || `${siteUrl}/zeeor-editorial.jpg`;
+    const image = pub.images?.[0] || `${siteUrl}/zeeor-logo.png`;
     const price = money(pub.salePrice || pub.price);
     const title = `${pub.name} — ${BRAND}`;
     const description = pub.shortDescription || `${price} · ${pub.category || 'Shop'} on ${BRAND} — ${SLOGAN.toLowerCase()}.`;
@@ -177,7 +177,7 @@ ${urls.map((u) => `  <url><loc>${esc(u.loc)}</loc><changefreq>${u.changefreq}</c
     const head = `<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><style>${PAGE_STYLE}</style></head>`;
     let html = injectSeo(`${head}<body></body></html>`, { title, description, canonical, jsonLd });
     const cards = listings.length
-      ? `<div class="grid">${listings.map((l) => cardHtml(`${siteUrl}/products/${productSlug(l)}`, l.images?.[0] || `${siteUrl}/zeeor-editorial.jpg`, l.title, money(l.salePrice || l.price))).join('')}</div>`
+      ? `<div class="grid">${listings.map((l) => cardHtml(`${siteUrl}/products/${productSlug(l)}`, l.images?.[0] || `${siteUrl}/zeeor-logo.png`, l.title, money(l.salePrice || l.price))).join('')}</div>`
       : `<p class="empty">This seller has no active listings right now.</p>`;
     const body = shell({ siteUrl, bodyKicker: 'ZEEOR SELLER', bodyTitle: reseller.displayName || reseller.username, bodyHtml: cards });
     html = html.replace('<body></body>', `<body>${body}</body>`);
@@ -229,7 +229,7 @@ ${urls.map((u) => `  <url><loc>${esc(u.loc)}</loc><changefreq>${u.changefreq}</c
     const head = `<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><style>${PAGE_STYLE}</style></head>`;
     let html = injectSeo(`${head}<body></body></html>`, { title, description, canonical, jsonLd });
     const cards = items.length
-      ? `<div class="grid">${items.map((p) => cardHtml(`${siteUrl}/products/${productSlug(p)}`, p.images?.[0] || `${siteUrl}/zeeor-editorial.jpg`, p.name, money(p.salePrice || p.price))).join('')}</div>`
+      ? `<div class="grid">${items.map((p) => cardHtml(`${siteUrl}/products/${productSlug(p)}`, p.images?.[0] || `${siteUrl}/zeeor-logo.png`, p.name, money(p.salePrice || p.price))).join('')}</div>`
       : `<p class="empty">New pieces are on the way.</p>`;
     const body = shell({
       siteUrl, bodyKicker: 'ZEEOR CATEGORY', bodyTitle: label,

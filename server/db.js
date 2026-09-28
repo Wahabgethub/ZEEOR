@@ -60,3 +60,24 @@ export function resellerCategoryNames(store, resellerId) { return categoryList(s
 
 export function ensureCommentsShape() { mutateStore((store) => { if (!Array.isArray(store.comments)) store.comments = []; return store; }); }
 export function publicComment(c) { return { id: c.id, productId: c.productId, name: c.name, text: c.text, createdAt: c.createdAt }; }
+
+// ---- Subcategories -------------------------------------------------------
+// Stored in their own array (store.subcategories) so every existing category list
+// (general / private / visible / reseller-allowed) keeps working exactly as before.
+// { id, name, categoryId, order } — categoryId points at a store.categories entry.
+export function ensureSubcategoriesShape() { mutateStore((store) => { if (!Array.isArray(store.subcategories)) store.subcategories = []; return store; }); }
+export function subcategoryList(store) { return (store.subcategories || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
+// { "Women": ["Dresses", "Tops"], ... } — only categories customers can currently see.
+export function subcategoryMap(store) {
+  const visible = new Set(visibleCategoryNames(store));
+  const byId = Object.fromEntries((store.categories || []).map((c) => [c.id, c.name]));
+  const map = {};
+  for (const sub of subcategoryList(store)) { const cat = byId[sub.categoryId]; if (cat && visible.has(cat)) (map[cat] = map[cat] || []).push(sub.name); }
+  return map;
+}
+// Is `subName` a real subcategory of category `categoryName`? (empty = "no subcategory", always fine)
+export function isValidSubcategory(store, categoryName, subName) {
+  if (!subName) return true;
+  const cat = (store.categories || []).find((c) => c.name === categoryName);
+  return Boolean(cat && (store.subcategories || []).some((x) => x.categoryId === cat.id && x.name === subName));
+}

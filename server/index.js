@@ -5,7 +5,7 @@ import multer from 'multer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authenticate, ensureDefaultResellers, hashPassword, requireAuth, requireRole, signUser } from './auth.js';
-import { categoryList, ensureCategoriesShape, ensureCommentsShape, generalCategoryNames, mutateStore, productTotalStock, publicComment, publicProduct, readStore, resellerCategoryNames, visibleCategoryNames } from './db.js';
+import { categoryList, ensureCategoriesShape, ensureCommentsShape, ensureSubcategoriesShape, isValidSubcategory, subcategoryList, subcategoryMap, generalCategoryNames, mutateStore, productTotalStock, publicComment, publicProduct, readStore, resellerCategoryNames, visibleCategoryNames } from './db.js';
 import { deleteImage, uploadImage } from './imageStorage.js';
 import { createSeoRouter, createHomeSeo } from './seoRoutes.js';
 
@@ -19,7 +19,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 const root = path.dirname(fileURLToPath(import.meta.url));
 ensureDefaultResellers();
 ensureCategoriesShape();
-ensureCommentsShape();
+ensureCommentsShape(); ensureSubcategoriesShape();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -70,6 +70,7 @@ app.get('/api/cms', (_req, res) => res.json(readStore().cms));
 app.get('/api/settings', (_req, res) => res.json(readStore().settings));
 app.patch('/api/admin/settings', requireAuth, requireRole('owner'), (req, res) => { let updated; mutateStore((store) => { store.settings = { ...store.settings, ...req.body }; updated = store.settings; return store; }); res.json(updated); });
 app.get('/api/categories', (_req, res) => res.json(visibleCategoryNames(readStore())));
+app.get('/api/subcategories', (_req, res) => res.json(subcategoryMap(readStore())));
 app.get('/api/products', (req, res) => {
   const store = readStore();
   let items = catalogItems(store).filter((p) => p.published);
@@ -85,7 +86,7 @@ app.get('/api/products', (req, res) => {
   if (sort === 'price-desc') items.sort((a, b) => priceOf(b) - priceOf(a));
   if (sort === 'newest') items.sort((a, b) => Number(b.flags.new) - Number(a.flags.new));
   if (sort === 'bestselling') items.sort((a, b) => Number(b.flags.bestseller) - Number(a.flags.bestseller));
-  res.json({ products: items.map(publicProduct), categories: visibleCategoryNames(store), collections: [...new Set(items.map((p) => p.collection))] });
+  res.json({ products: items.map(publicProduct), categories: visibleCategoryNames(store), subcategories: subcategoryMap(store), collections: [...new Set(items.map((p) => p.collection))] });
 });
 app.get('/api/products/:id', (req, res) => {
   const product = catalogItems(readStore()).find((p) => p.id === req.params.id || p.slug === req.params.id);
@@ -132,10 +133,12 @@ app.get('/share/:id', (req, res) => {
   if (!product) return res.redirect('/');
   const pub = publicProduct(product);
   const siteUrl = `${req.protocol}://${req.get('host')}`;
-  const image = pub.images?.[0] || `${siteUrl}/zeeor-editorial.jpg`;
+  const image = pub.images?.[0] || `${siteUrl}/zeeor-logo.png`;
   const price = shareMoney(pub.salePrice || pub.price);
   const title = `${pub.name} — ZEEOR`;
-  const description = `${price} · Shop now on ZEEOR — wear without limits.`;
+  const written = String(pub.description || '').trim();
+  const cleanDescription = written && !/^A considered (ZEEOR|piece)/i.test(written) ? written.replace(/\s+/g, ' ').slice(0, 180) : '';
+  const description = cleanDescription ? `${price} · ${cleanDescription}` : `${price} · Shop now on ZEEOR — wear without limits.`;
   const productUrl = `${siteUrl}/#product/${pub.id}`;
   res.set('Content-Type', 'text/html').send(`<!doctype html><html lang="en"><head><meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -145,8 +148,6 @@ app.get('/share/:id', (req, res) => {
 <meta property="og:title" content="${esc(title)}" />
 <meta property="og:description" content="${esc(description)}" />
 <meta property="og:image" content="${esc(image)}" />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="1500" />
 <meta property="og:url" content="${esc(productUrl)}" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${esc(title)}" />
@@ -254,7 +255,7 @@ app.post('/api/admin/resellers/:id/categories', requireAuth, requireRole('owner'
   if (!name) return res.status(400).json({ error: 'Category name is required' });
   const store = readStore();
   const reseller = store.resellers.find((r) => r.id === req.params.id);
-  if (!reseller) return res.status(404).json({ error: 'Reseller not found' });
+  if (!reseller) return res.status(404).json({ error: 'Seller not found' });
   if (categoryList(store).some((c) => c.name.toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: 'A category with this name already exists' });
   const category = { id: `c-${Date.now()}`, name, scope: 'private', resellerId: reseller.id, order: categoryList(store).length };
   mutateStore((s) => { s.categories = [...(s.categories || []), category]; return s; });
@@ -276,20 +277,80 @@ app.patch('/api/admin/categories/reorder', requireAuth, requireRole('owner'), (r
 });
 // Owner has full authority to delete ANY category — general or a reseller's private one.
 app.delete('/api/admin/categories/:id', requireAuth, requireRole('owner'), (req, res) => {
-  mutateStore((store) => { store.categories = (store.categories || []).filter((c) => c.id !== req.params.id); return store; });
+  mutateStore((store) => { store.categories = (store.categories || []).filter((c) => c.id !== req.params.id); store.subcategories = (store.subcategories || []).filter((x) => x.categoryId !== req.params.id); return store; });
+  res.json({ ok: true });
+});
+// ---- Category rename + Subcategories (owner-only). Sellers can only PICK from these. ----
+app.patch('/api/admin/categories/:id', requireAuth, requireRole('owner'), (req, res) => {
+  const name = String(req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Category name is required' });
+  const before = readStore();
+  const cat = (before.categories || []).find((c) => c.id === req.params.id);
+  if (!cat) return res.status(404).json({ error: 'Category not found' });
+  if (categoryList(before).some((c) => c.id !== cat.id && c.name.toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: 'A category with this name already exists' });
+  const oldName = cat.name;
+  mutateStore((store) => {
+    store.categories.find((c) => c.id === cat.id).name = name;
+    store.products.forEach((p) => { if (p.category === oldName) p.category = name; });
+    store.resellers.forEach((r) => (r.listings || []).forEach((l) => { if (l.category === oldName) l.category = name; }));
+    return store;
+  });
+  res.json({ id: cat.id, name });
+});
+app.get('/api/admin/subcategories', requireAuth, requireRole('owner'), (_req, res) => res.json(subcategoryList(readStore())));
+app.post('/api/admin/categories/:id/subcategories', requireAuth, requireRole('owner'), (req, res) => {
+  const name = String(req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Subcategory name is required' });
+  const before = readStore();
+  if (!(before.categories || []).some((c) => c.id === req.params.id)) return res.status(404).json({ error: 'Category not found' });
+  const siblings = (before.subcategories || []).filter((x) => x.categoryId === req.params.id);
+  if (siblings.some((x) => x.name.toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: 'This category already has a subcategory with that name' });
+  const sub = { id: `s-${Date.now()}`, name, categoryId: req.params.id, order: siblings.length };
+  mutateStore((store) => { store.subcategories = [...(store.subcategories || []), sub]; return store; });
+  res.status(201).json(sub);
+});
+app.patch('/api/admin/subcategories/:id', requireAuth, requireRole('owner'), (req, res) => {
+  const name = String(req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Subcategory name is required' });
+  const before = readStore();
+  const sub = (before.subcategories || []).find((x) => x.id === req.params.id);
+  if (!sub) return res.status(404).json({ error: 'Subcategory not found' });
+  if ((before.subcategories || []).some((x) => x.id !== sub.id && x.categoryId === sub.categoryId && x.name.toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: 'This category already has a subcategory with that name' });
+  const parent = before.categories.find((c) => c.id === sub.categoryId)?.name;
+  const oldName = sub.name;
+  mutateStore((store) => {
+    store.subcategories.find((x) => x.id === sub.id).name = name;
+    store.products.forEach((p) => { if (p.category === parent && p.subcategory === oldName) p.subcategory = name; });
+    store.resellers.forEach((r) => (r.listings || []).forEach((l) => { if (l.category === parent && l.subcategory === oldName) l.subcategory = name; }));
+    return store;
+  });
+  res.json({ ...sub, name });
+});
+app.delete('/api/admin/subcategories/:id', requireAuth, requireRole('owner'), (req, res) => {
+  const before = readStore();
+  const sub = (before.subcategories || []).find((x) => x.id === req.params.id);
+  if (!sub) return res.status(404).json({ error: 'Subcategory not found' });
+  const parent = before.categories.find((c) => c.id === sub.categoryId)?.name;
+  mutateStore((store) => {
+    store.subcategories = (store.subcategories || []).filter((x) => x.id !== sub.id);
+    store.products.forEach((p) => { if (p.category === parent && p.subcategory === sub.name) p.subcategory = undefined; });
+    store.resellers.forEach((r) => (r.listings || []).forEach((l) => { if (l.category === parent && l.subcategory === sub.name) l.subcategory = undefined; }));
+    return store;
+  });
   res.json({ ok: true });
 });
 app.post('/api/admin/products', requireAuth, requireRole('owner'), (req, res) => {
   const input = req.body;
   // Owner can only use GENERAL categories for their own catalog — never a reseller's private category.
   if (!generalCategoryNames(readStore()).includes(input.category)) return res.status(400).json({ error: 'Create this general category in Owner Studio before assigning a product' });
+  if (input.subcategory && !isValidSubcategory(readStore(), input.category, input.subcategory)) return res.status(400).json({ error: 'Pick a subcategory that belongs to this category' });
   let built; try { built = buildVariants(input.colorBlocks); } catch (err) { return res.status(400).json({ error: err.message }); }
   const featuredPosition = input.featuredPosition ? Math.min(5, Math.max(1, Number(input.featuredPosition))) : null;
-  const product = { ...input, id: input.id || `p-${Date.now()}`, slug: input.slug || String(input.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'), images: built.images.length ? built.images : ['/zeeor-editorial.jpg'], imagePublicIds: built.imagePublicIds, sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, discount: input.salePrice ? Math.round((1 - Number(input.salePrice) / Number(input.price)) * 100) : 0, featuredPosition, flags: { ...(input.flags || { new: true, bestseller: false }), sale: Boolean(input.salePrice), featured: featuredPosition != null }, published: input.published !== false };
+  const product = { ...input, id: input.id || `p-${Date.now()}`, slug: input.slug || String(input.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'), images: built.images.length ? built.images : ['/zeeor-placeholder.jpg'], imagePublicIds: built.imagePublicIds, sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, discount: input.salePrice ? Math.round((1 - Number(input.salePrice) / Number(input.price)) * 100) : 0, featuredPosition, flags: { ...(input.flags || { new: true, bestseller: false }), sale: Boolean(input.salePrice), featured: featuredPosition != null }, published: input.published !== false };
   mutateStore((store) => { const index = store.products.findIndex((p) => p.id === product.id); index >= 0 ? store.products.splice(index, 1, product) : store.products.push(product); return store; });
   res.json(product);
 });
-app.patch('/api/admin/products/:id', requireAuth, requireRole('owner'), (req, res) => { let changed; if (req.body.category && !generalCategoryNames(readStore()).includes(req.body.category)) return res.status(400).json({ error: 'Category must be a general category created by the owner' }); mutateStore((store) => { changed = store.products.find((p) => p.id === req.params.id); if (changed) { if (req.body.price !== undefined) changed.price = Number(req.body.price); if (req.body.salePrice !== undefined) changed.salePrice = req.body.salePrice === '' ? null : Number(req.body.salePrice); if (req.body.salePrice !== undefined) changed.flags = { ...(changed.flags || {}), sale: Boolean(req.body.salePrice) }; if (req.body.category) changed.category = req.body.category; return store; } return store; }); changed ? res.json(changed) : res.status(404).json({ error: 'Product not found' }); });
+app.patch('/api/admin/products/:id', requireAuth, requireRole('owner'), (req, res) => { let changed; if (req.body.category && !generalCategoryNames(readStore()).includes(req.body.category)) return res.status(400).json({ error: 'Category must be a general category created by the owner' }); { const s0 = readStore(); const cur = s0.products.find((p) => p.id === req.params.id); if (req.body.subcategory && !isValidSubcategory(s0, req.body.category || cur?.category, String(req.body.subcategory))) return res.status(400).json({ error: 'Pick a subcategory that belongs to this category' }); } mutateStore((store) => { changed = store.products.find((p) => p.id === req.params.id); if (changed) { if (req.body.price !== undefined) changed.price = Number(req.body.price); if (req.body.salePrice !== undefined) changed.salePrice = req.body.salePrice === '' ? null : Number(req.body.salePrice); if (req.body.salePrice !== undefined) changed.flags = { ...(changed.flags || {}), sale: Boolean(req.body.salePrice) }; if (req.body.category) { if (req.body.category !== changed.category && req.body.subcategory === undefined) changed.subcategory = undefined; changed.category = req.body.category; } if (req.body.subcategory !== undefined) changed.subcategory = String(req.body.subcategory || '').trim() || undefined; if (req.body.name !== undefined && String(req.body.name).trim()) changed.name = String(req.body.name).trim(); if (req.body.description !== undefined) changed.description = String(req.body.description).trim(); if (req.body.shortDescription !== undefined) changed.shortDescription = String(req.body.shortDescription).trim(); return store; } return store; }); changed ? res.json(changed) : res.status(404).json({ error: 'Product not found' }); });
 // Owner sets where a product ranks in the homepage "featured" row — 1 to 5, front-to-back. Clearing it un-features the product.
 app.patch('/api/admin/products/:id/position', requireAuth, requireRole('owner'), (req, res) => {
   const raw = req.body.featuredPosition;
@@ -305,15 +366,38 @@ app.patch('/api/admin/orders/:id', requireAuth, requireRole('owner'), (req, res)
 app.patch('/api/admin/cms', requireAuth, requireRole('owner'), (req, res) => { let cms; if (req.body.heroImage && !(String(req.body.heroImage).startsWith('/') || String(req.body.heroImage).includes('res.cloudinary.com'))) return res.status(400).json({ error: 'Hero images must be local or hosted on Cloudinary' }); mutateStore((store) => { store.cms = { ...store.cms, ...req.body }; cms = store.cms; return store; }); res.json(cms); });
 app.get('/api/admin/resellers', requireAuth, requireRole('owner'), (_req, res) => res.json(readStore().resellers.map(({ passwordHash, ...r }) => r)));
 app.post('/api/admin/resellers', requireAuth, requireRole('owner'), (req, res) => { const username = String(req.body.username || '').trim(); const password = String(req.body.password || ''); const whatsapp = String(req.body.whatsapp || '').replace(/[^0-9]/g, ''); if (!/^[a-zA-Z0-9._-]{3,64}$/.test(username)) return res.status(400).json({ error: 'Username must be 3–64 letters, numbers, dots, underscores, or hyphens' }); if (password.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters' }); if (!whatsapp || whatsapp.length < 10) return res.status(400).json({ error: 'Enter a valid WhatsApp number with country code, e.g. 923001234567' }); if (readStore().resellers.some((entry) => entry.username.toLowerCase() === username.toLowerCase())) return res.status(409).json({ error: 'Username already exists' }); const reseller = { id: `r-${Date.now()}`, username, displayName: req.body.displayName || username, whatsapp, passwordHash: hashPassword(password), active: true, listings: [], createdAt: new Date().toISOString() }; mutateStore((store) => { store.resellers.push(reseller); return store; }); const { passwordHash, ...safe } = reseller; res.status(201).json(safe); });
-app.patch('/api/admin/resellers/:id', requireAuth, requireRole('owner'), (req, res) => { let changed; mutateStore((store) => { changed = store.resellers.find((entry) => entry.id === req.params.id); if (changed && req.body.active !== undefined) changed.active = Boolean(req.body.active); return store; }); changed ? res.json({ id: changed.id, username: changed.username, displayName: changed.displayName, active: changed.active !== false }) : res.status(404).json({ error: 'Reseller not found' }); });
+app.patch('/api/admin/resellers/:id', requireAuth, requireRole('owner'), (req, res) => { let changed; mutateStore((store) => { changed = store.resellers.find((entry) => entry.id === req.params.id); if (changed && req.body.active !== undefined) changed.active = Boolean(req.body.active); return store; }); changed ? res.json({ id: changed.id, username: changed.username, displayName: changed.displayName, active: changed.active !== false }) : res.status(404).json({ error: 'Seller not found' }); });
 app.delete('/api/admin/resellers/:id', requireAuth, requireRole('owner'), (req, res) => { mutateStore((store) => { store.resellers = store.resellers.filter((r) => r.id !== req.params.id); store.categories = (store.categories || []).filter((c) => c.resellerId !== req.params.id); return store; }); res.json({ ok: true }); });
-app.get('/api/admin/resellers/:id/listings', requireAuth, requireRole('owner'), (req, res) => { const reseller = readStore().resellers.find((r) => r.id === req.params.id); reseller ? res.json(reseller.listings || []) : res.status(404).json({ error: 'Reseller not found' }); });
-app.patch('/api/admin/resellers/:id/listings/:listingId', requireAuth, requireRole('owner'), (req, res) => { let changed; mutateStore((store) => { const reseller = store.resellers.find((r) => r.id === req.params.id); changed = reseller?.listings.find((l) => l.id === req.params.listingId); if (changed) { if (req.body.price !== undefined) changed.price = Number(req.body.price); if (req.body.salePrice !== undefined) changed.salePrice = req.body.salePrice === '' ? null : Number(req.body.salePrice); if (req.body.title !== undefined) changed.title = String(req.body.title); if (req.body.category !== undefined) changed.category = String(req.body.category); if (req.body.active !== undefined) changed.active = Boolean(req.body.active); } return store; }); changed ? res.json(changed) : res.status(404).json({ error: 'Listing not found' }); });
+app.get('/api/admin/resellers/:id/listings', requireAuth, requireRole('owner'), (req, res) => { const reseller = readStore().resellers.find((r) => r.id === req.params.id); reseller ? res.json(reseller.listings || []) : res.status(404).json({ error: 'Seller not found' }); });
+app.patch('/api/admin/resellers/:id/listings/:listingId', requireAuth, requireRole('owner'), (req, res) => { let changed; mutateStore((store) => { const reseller = store.resellers.find((r) => r.id === req.params.id); changed = reseller?.listings.find((l) => l.id === req.params.listingId); if (changed) { if (req.body.price !== undefined) changed.price = Number(req.body.price); if (req.body.salePrice !== undefined) changed.salePrice = req.body.salePrice === '' ? null : Number(req.body.salePrice); if (req.body.title !== undefined) changed.title = String(req.body.title); if (req.body.category !== undefined) { if (String(req.body.category) !== changed.category && req.body.subcategory === undefined) changed.subcategory = undefined; changed.category = String(req.body.category); } if (req.body.subcategory !== undefined) changed.subcategory = String(req.body.subcategory || '').trim() || undefined; if (req.body.description !== undefined) changed.description = String(req.body.description).trim() || undefined; if (req.body.active !== undefined) changed.active = Boolean(req.body.active); } return store; }); changed ? res.json(changed) : res.status(404).json({ error: 'Listing not found' }); });
 app.delete('/api/admin/resellers/:id/listings/:listingId', requireAuth, requireRole('owner'), (req, res) => { let found = false; let imagePublicIds = []; mutateStore((store) => { const reseller = store.resellers.find((r) => r.id === req.params.id); if (!reseller) return store; const listing = reseller.listings.find((l) => l.id === req.params.listingId); if (listing) { found = true; imagePublicIds = listing.imagePublicIds || []; reseller.listings = reseller.listings.filter((l) => l.id !== req.params.listingId); } return store; }); if (!found) return res.status(404).json({ error: 'Listing not found' }); Promise.allSettled(imagePublicIds.map((id) => deleteImage(id))).catch(() => {}); res.json({ ok: true }); });
 // General categories + this reseller's own private categories only — never another reseller's private ones.
 app.get('/api/reseller/categories', requireAuth, requireRole('reseller'), (req, res) => res.json(resellerCategoryNames(readStore(), req.auth.sub)));
 app.get('/api/reseller/listings', requireAuth, requireRole('reseller'), (req, res) => res.json(readStore().resellers.find((r) => r.id === req.auth.sub)?.listings || []));
-app.post('/api/reseller/listings', requireAuth, requireRole('reseller'), (req, res) => { const input = req.body; const allowed = resellerCategoryNames(readStore(), req.auth.sub); if (!allowed.includes(input.category)) return res.status(400).json({ error: 'Choose a category created by the owner, or your own private category' }); let built; try { built = buildVariants(input.colorBlocks); } catch (err) { return res.status(400).json({ error: err.message }); } const listing = { id: `l-${Date.now()}`, ...input, description: String(input.description || '').trim() || undefined, sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, images: built.images, imagePublicIds: built.imagePublicIds, active: true, createdAt: new Date().toISOString() }; mutateStore((store) => { const owner = store.resellers.find((r) => r.id === req.auth.sub); if (owner) owner.listings.unshift(listing); return store; }); res.status(201).json(listing); });
+app.post('/api/reseller/listings', requireAuth, requireRole('reseller'), (req, res) => { const input = req.body; const allowed = resellerCategoryNames(readStore(), req.auth.sub); if (!allowed.includes(input.category)) return res.status(400).json({ error: 'Choose a category created by the owner, or your own private category' }); if (input.subcategory && !isValidSubcategory(readStore(), input.category, input.subcategory)) return res.status(400).json({ error: 'Pick a subcategory that belongs to this category' }); let built; try { built = buildVariants(input.colorBlocks); } catch (err) { return res.status(400).json({ error: err.message }); } const listing = { id: `l-${Date.now()}`, ...input, description: String(input.description || '').trim() || undefined, subcategory: String(input.subcategory || '').trim() || undefined, sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, images: built.images, imagePublicIds: built.imagePublicIds, active: true, createdAt: new Date().toISOString() }; mutateStore((store) => { const owner = store.resellers.find((r) => r.id === req.auth.sub); if (owner) owner.listings.unshift(listing); return store; }); res.status(201).json(listing); });
+app.patch('/api/reseller/listings/:id', requireAuth, requireRole('reseller'), (req, res) => {
+  const before = readStore();
+  const current = before.resellers.find((r) => r.id === req.auth.sub)?.listings.find((l) => l.id === req.params.id);
+  if (!current) return res.status(404).json({ error: 'Listing not found' });
+  const b = req.body;
+  const category = b.category !== undefined ? String(b.category) : current.category;
+  if (b.category !== undefined && !resellerCategoryNames(before, req.auth.sub).includes(category)) return res.status(400).json({ error: 'Choose a category created by the owner, or your own private category' });
+  const sub = b.subcategory !== undefined ? String(b.subcategory || '').trim() : (category !== current.category ? '' : current.subcategory || '');
+  if (sub && !isValidSubcategory(before, category, sub)) return res.status(400).json({ error: 'Pick a subcategory that belongs to this category' });
+  let updated;
+  mutateStore((store) => {
+    const listing = store.resellers.find((r) => r.id === req.auth.sub)?.listings.find((l) => l.id === req.params.id);
+    if (listing) {
+      if (b.title !== undefined && String(b.title).trim()) listing.title = String(b.title).trim();
+      if (b.description !== undefined) listing.description = String(b.description).trim() || undefined;
+      listing.category = category;
+      listing.subcategory = sub || undefined;
+      updated = listing;
+    }
+    return store;
+  });
+  res.json(updated);
+});
 app.delete('/api/reseller/listings/:id', requireAuth, requireRole('reseller'), async (req, res) => { const store = readStore(); const owner = store.resellers.find((r) => r.id === req.auth.sub); const listing = owner?.listings.find((l) => l.id === req.params.id); try { await Promise.all((listing?.imagePublicIds || []).map((publicId) => deleteImage(publicId))); mutateStore((next) => { const currentOwner = next.resellers.find((r) => r.id === req.auth.sub); if (currentOwner) currentOwner.listings = currentOwner.listings.filter((l) => l.id !== req.params.id); return next; }); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: error.message }); } });
 app.delete('/api/reseller/listings/:id/images/:index', requireAuth, requireRole('reseller'), async (req, res) => { const store = readStore(); const owner = store.resellers.find((r) => r.id === req.auth.sub); const listing = owner?.listings.find((l) => l.id === req.params.id); const index = Number(req.params.index); try { await deleteImage(listing?.imagePublicIds?.[index]); mutateStore((next) => { const currentOwner = next.resellers.find((r) => r.id === req.auth.sub); const current = currentOwner?.listings.find((l) => l.id === req.params.id); if (current) { current.images = (current.images || []).filter((_url, imageIndex) => imageIndex !== index); current.imagePublicIds = (current.imagePublicIds || []).filter((_id, imageIndex) => imageIndex !== index); } return next; }); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: error.message }); } });
 app.post('/api/upload', requireAuth, requireRole('owner', 'reseller'), upload.array('images', 5), async (req, res) => { try { const results = await Promise.all((req.files || []).map((file) => uploadImage(file.buffer))); res.json(results); } catch (error) { res.status(502).json({ error: error.message }); } });

@@ -125,3 +125,49 @@
 .comment-admin-meta strong{color:var(--ink);font-size:11px}
 .comment-admin-row textarea{border:1px solid var(--line);background:transparent;padding:10px 12px;font:12px var(--sans);width:100%;resize:vertical}
 @media(max-width:900px){.comment-form{max-width:100%}}
+
+/* ===================== batch24 ===================== */
+/* Hero: always cover the whole box (no grey bars on any screen). The slow zoom now runs on a transform layer, so it can never leave gaps. */
+.hero{background-size:cover;animation:none}
+.hero::before{content:"";position:absolute;inset:0;z-index:-1;background:inherit;background-size:cover;background-position:inherit;transform-origin:center;animation:heroDrift 22s ease-in-out infinite alternate;will-change:transform}
+@keyframes heroDrift{from{transform:scale(1)}to{transform:scale(1.1)}}
+@media(prefers-reduced-motion:reduce){.hero::before{animation:none}}
+
+/* Homepage category pills */
+.category-section{padding:64px 9vw 72px;background:var(--paper)}
+.category-section h2{font:clamp(34px,5vw,64px)/1 var(--serif);font-weight:500;letter-spacing:-.05em;margin:14px 0 30px}
+.category-section h2 em{color:var(--moss);font-style:italic}
+.category-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.category-pill{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:66px;padding:10px 26px;border-radius:999px;border:1px solid rgba(39,77,61,.24);background:rgba(39,77,61,.10);color:var(--forest);font:600 15px/1.2 var(--sans);letter-spacing:.01em;text-decoration:none;box-shadow:0 10px 22px -12px rgba(16,44,36,.35);transition:background .35s var(--ease),color .35s var(--ease),transform .35s var(--ease),box-shadow .35s var(--ease),border-color .35s var(--ease);-webkit-tap-highlight-color:transparent}
+.category-pill i{font-style:normal;opacity:.55;flex:none;transition:transform .35s var(--ease),opacity .35s}
+.category-pill:hover,.category-pill:focus-visible,.category-pill:active{background:var(--forest);color:var(--cream);border-color:var(--forest);transform:translateY(-2px);box-shadow:0 18px 30px -14px rgba(16,44,36,.65);outline:0}
+.category-pill:hover i,.category-pill:focus-visible i,.category-pill:active i{opacity:1;transform:translate(2px,-2px)}
+.category-pill:last-child:nth-child(odd){grid-column:1/-1}
+@media(max-width:900px){.category-section{padding:52px 22px 60px}.category-pill{min-height:60px;padding:8px 20px;font-size:14px}.category-grid{gap:12px}}
+
+/* Subcategory filter pills on category pages */
+.sub-pills{display:flex;gap:8px;overflow-x:auto;padding:2px 0 18px;scrollbar-width:none}
+.sub-pills::-webkit-scrollbar{display:none}
+.sub-pills button{flex:0 0 auto;border-radius:999px;border:1px solid rgba(39,77,61,.26);background:rgba(39,77,61,.07);color:var(--forest);padding:10px 18px;font:600 12px var(--sans);transition:background .25s,color .25s,border-color .25s}
+.sub-pills button:hover{background:rgba(39,77,61,.16)}
+.sub-pills button.selected{background:var(--forest);color:var(--cream);border-color:var(--forest)}
+
+/* Smooth, subtle product image zoom (hover on desktop, press on touch) */
+.product-image-wrap img,.gallery-scroll-item img{transition:transform .9s cubic-bezier(.2,.65,.2,1),filter .5s}
+.product-image-wrap img{transform:scale(1);filter:none}
+@media(hover:hover){.product-card:hover .product-image-wrap img{transform:scale(1.08)}.gallery-scroll-item:hover img{transform:scale(1.07)}}
+.product-card:active .product-image-wrap img,.gallery-scroll-item:active img{transform:scale(1.06)}
+
+/* Owner/seller editors */
+.details-editor{grid-column:1/-1;background:var(--paper);border:1px solid var(--line);padding:20px;margin:6px 0 16px}
+.details-editor textarea{min-height:90px}
+.details-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.listing-actions{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.category-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end}
+.category-order-row{grid-template-columns:auto 1fr auto auto}
+.subcat-panel{border-top:1px dashed var(--line);padding:14px 0 18px 40px;display:flex;flex-direction:column;gap:12px}
+.subcat-chips{display:flex;flex-wrap:wrap;gap:8px}
+.subcat-chip{display:inline-flex;align-items:center;gap:8px;background:rgba(39,77,61,.09);border:1px solid rgba(39,77,61,.22);border-radius:999px;padding:6px 8px 6px 14px;font:600 12px var(--sans);color:var(--forest)}
+.subcat-chip button{width:22px;height:22px;border-radius:50%;font-size:12px;color:var(--forest)}
+.subcat-chip button:hover{background:var(--forest);color:var(--cream)}
+@media(max-width:900px){.subcat-panel{padding-left:0}.category-order-row{grid-template-columns:auto 1fr}.category-actions{grid-column:1/-1;justify-content:flex-start}}
