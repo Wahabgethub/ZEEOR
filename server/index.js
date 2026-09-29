@@ -10,6 +10,7 @@ import { deleteImage, uploadImage } from './imageStorage.js';
 import { createSeoRouter, createHomeSeo } from './seoRoutes.js';
 
 const app = express();
+app.disable('x-powered-by');
 // Behind Cloudflare/nginx, req.protocol otherwise always reads 'http'. This
 // makes Express trust X-Forwarded-Proto so req.protocol is correct — used
 // only by the new SEO routes' fallback URL detection (server/seo.js prefers
