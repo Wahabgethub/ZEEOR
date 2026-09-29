@@ -37,19 +37,60 @@ function buildSizesInventory(sizeBoxes) {
   const inventory = Object.fromEntries(boxes.map((b) => [`Default-${String(b.label).trim()}`, Math.max(0, Number(b.stock) || 0)]));
   return { sizes, inventory };
 }
-// Turns client-submitted colour/design blocks — each with its own photo set and per-size stock — into the full variant shape
-function buildVariants(colorBlocks) {
-  const blocks = Array.isArray(colorBlocks) ? colorBlocks.filter((b) => String(b?.name || '').trim()) : [];
-  if (!blocks.length) throw new Error('Add at least one colour/design with photos and stock');
+// ---- Owner-defined product-form rules, per category / subcategory ----
+// Stored under store.formConfigs[<categoryId or subcategoryId>]. Nothing existing is migrated: no rule saved = the classic clothing form (sizes + colours), exactly as before.
+const FORM_EXTRA_FIELDS = { volume: 'Volume (ml)', scentType: 'Scent type', modelNumber: 'Model number', brand: 'Brand', material: 'Material', weight: 'Weight' };
+const defaultFormConfig = () => ({ fields: { sizes: { show: true, help: '' }, colors: { show: true, help: '' }, ...Object.fromEntries(Object.keys(FORM_EXTRA_FIELDS).map((k) => [k, { show: false, required: false, help: '' }])), stock: { show: true, required: true, help: '' } } });
+function sanitizeFormConfig(input) {
+  const base = defaultFormConfig(); const given = input?.fields || {};
+  for (const key of Object.keys(base.fields)) {
+    const f = given[key] || {}; const target = base.fields[key];
+    if (key !== 'stock' && typeof f.show === 'boolean') target.show = f.show;
+    if (key in FORM_EXTRA_FIELDS) target.required = target.show && Boolean(f.required);
+    target.help = String(f.help || '').trim().slice(0, 160);
+  }
+  return base;
+}
+function formConfigFor(store, categoryName, subName) {
+  const cats = (store.categories || []).filter((c) => c && typeof c === 'object');
+  const category = cats.find((c) => c.name === categoryName);
+  const sub = category && subName ? (store.subcategories || []).find((x) => x.categoryId === category.id && x.name === subName) : null;
+  const all = store.formConfigs || {};
+  const raw = (sub && all[sub.id]) || (category && all[category.id]);
+  return raw ? sanitizeFormConfig(raw) : defaultFormConfig();
+}
+function buildAttributes(input, cfg) {
+  const out = {};
+  for (const [key, label] of Object.entries(FORM_EXTRA_FIELDS)) {
+    const rule = cfg.fields[key]; if (!rule?.show) continue;
+    const value = String(input?.[key] ?? '').trim().slice(0, 120);
+    if (rule.required && !value) throw new Error(`${label} is required for this category`);
+    if (value) out[key] = value;
+  }
+  return out;
+}
+// Turns client-submitted colour/design blocks — each with its own photo set and per-size stock — into the full variant shape.
+// cfg decides whether sizes / colours apply at all; stock quantity is mandatory in every mode.
+function buildVariants(colorBlocks, cfg = defaultFormConfig()) {
+  const useColors = cfg.fields.colors.show !== false; const useSizes = cfg.fields.sizes.show !== false;
+  let blocks = Array.isArray(colorBlocks) ? colorBlocks : [];
+  blocks = useColors ? blocks.filter((b) => String(b?.name || '').trim()) : blocks.slice(0, 1).map((b) => ({ ...b, name: 'Default' }));
+  if (!blocks.length) throw new Error(useColors ? 'Add at least one colour/design with photos and stock' : 'Add photos and stock quantity for this product');
   if (blocks.length > 4) throw new Error('Maximum 4 colours/designs per product');
   const names = blocks.map((b) => String(b.name).trim());
   if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) throw new Error('Colour/design names must be unique');
-  for (const b of blocks) { if (!b.images?.length) throw new Error(`Add at least one photo for "${b.name}"`); if (b.images.length > 5) throw new Error(`Maximum 5 photos per colour/design ("${b.name}")`); }
-  const sizeSet = new Set();
-  for (const b of blocks) Object.keys(b.stocks || {}).forEach((s) => { if (String(s).trim()) sizeSet.add(String(s).trim()); });
-  const sizes = [...sizeSet];
-  if (!sizes.length) throw new Error('Add at least one size with a stock quantity');
-  if (sizes.length > 4) throw new Error('Maximum 4 sizes per product');
+  for (const b of blocks) { if (!b.images?.length) throw new Error(useColors ? `Add at least one photo for "${b.name}"` : 'Add at least one photo'); if (b.images.length > 5) throw new Error(`Maximum 5 photos per colour/design ("${b.name}")`); }
+  let sizes;
+  if (useSizes) {
+    const sizeSet = new Set();
+    for (const b of blocks) Object.keys(b.stocks || {}).forEach((s) => { if (String(s).trim()) sizeSet.add(String(s).trim()); });
+    sizes = [...sizeSet];
+    if (!sizes.length) throw new Error('Add at least one size with a stock quantity');
+    if (sizes.length > 4) throw new Error('Maximum 4 sizes per product');
+  } else {
+    sizes = ['One Size'];
+    for (const b of blocks) if (String(b.stocks?.['One Size'] ?? '').trim() === '') throw new Error('Stock quantity is required');
+  }
   const inventory = {}; const galleryByColor = {}; const imagePublicIdsByColor = {};
   for (const b of blocks) {
     const name = String(b.name).trim();
@@ -57,6 +98,7 @@ function buildVariants(colorBlocks) {
     imagePublicIdsByColor[name] = b.imagePublicIds || [];
     for (const size of sizes) inventory[`${name}-${size}`] = Math.max(0, Number(b.stocks?.[size]) || 0);
   }
+  if (Object.values(inventory).reduce((sum, v) => sum + v, 0) < 1) throw new Error('Stock quantity is required — enter how many pieces are available');
   const colors = names;
   const images = galleryByColor[names[0]] || [];
   const imagePublicIds = Object.values(imagePublicIdsByColor).flat();
@@ -297,6 +339,25 @@ app.patch('/api/admin/categories/:id', requireAuth, requireRole('owner'), (req, 
   });
   res.json({ id: cat.id, name });
 });
+// ---- Product-form rules API ----
+// Public (sellers + storefront need it): rules keyed by category name, or "Category::Subcategory" name.
+app.get('/api/form-config', (_req, res) => {
+  const store = readStore(); const all = store.formConfigs || {}; const out = {};
+  const cats = (store.categories || []).filter((c) => c && typeof c === 'object');
+  for (const c of cats) if (all[c.id]) out[c.name] = sanitizeFormConfig(all[c.id]);
+  for (const x of store.subcategories || []) { const parent = cats.find((c) => c.id === x.categoryId); if (parent && all[x.id]) out[`${parent.name}::${x.name}`] = sanitizeFormConfig(all[x.id]); }
+  res.json(out);
+});
+// Owner editor: rules keyed by category / subcategory id.
+app.get('/api/admin/form-config', requireAuth, requireRole('owner'), (_req, res) => { const all = readStore().formConfigs || {}; res.json(Object.fromEntries(Object.entries(all).map(([id, cfg]) => [id, sanitizeFormConfig(cfg)]))); });
+app.put('/api/admin/form-config/:id', requireAuth, requireRole('owner'), (req, res) => {
+  const before = readStore(); const id = req.params.id;
+  const known = (before.categories || []).some((c) => c && c.id === id) || (before.subcategories || []).some((x) => x.id === id);
+  if (!known) return res.status(404).json({ error: 'Category or subcategory not found' });
+  let saved = null;
+  mutateStore((store) => { store.formConfigs = store.formConfigs || {}; if (req.body.config === null) { delete store.formConfigs[id]; } else { saved = sanitizeFormConfig(req.body.config); store.formConfigs[id] = saved; } return store; });
+  res.json(saved || { reset: true });
+});
 app.get('/api/admin/subcategories', requireAuth, requireRole('owner'), (_req, res) => res.json(subcategoryList(readStore())));
 app.post('/api/admin/categories/:id/subcategories', requireAuth, requireRole('owner'), (req, res) => {
   const name = String(req.body.name || '').trim();
@@ -344,9 +405,9 @@ app.post('/api/admin/products', requireAuth, requireRole('owner'), (req, res) =>
   // Owner can only use GENERAL categories for their own catalog — never a reseller's private category.
   if (!generalCategoryNames(readStore()).includes(input.category)) return res.status(400).json({ error: 'Create this general category in Owner Studio before assigning a product' });
   if (input.subcategory && !isValidSubcategory(readStore(), input.category, input.subcategory)) return res.status(400).json({ error: 'Pick a subcategory that belongs to this category' });
-  let built; try { built = buildVariants(input.colorBlocks); } catch (err) { return res.status(400).json({ error: err.message }); }
+  let built, attrs; const cfg = formConfigFor(readStore(), input.category, input.subcategory); try { built = buildVariants(input.colorBlocks, cfg); attrs = buildAttributes(input.attributes, cfg); } catch (err) { return res.status(400).json({ error: err.message }); }
   const featuredPosition = input.featuredPosition ? Math.min(5, Math.max(1, Number(input.featuredPosition))) : null;
-  const product = { ...input, id: input.id || `p-${Date.now()}`, slug: input.slug || String(input.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'), images: built.images.length ? built.images : ['/zeeor-placeholder.jpg'], imagePublicIds: built.imagePublicIds, sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, discount: input.salePrice ? Math.round((1 - Number(input.salePrice) / Number(input.price)) * 100) : 0, featuredPosition, flags: { ...(input.flags || { new: true, bestseller: false }), sale: Boolean(input.salePrice), featured: featuredPosition != null }, published: input.published !== false };
+  const product = { ...input, id: input.id || `p-${Date.now()}`, slug: input.slug || String(input.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'), images: built.images.length ? built.images : ['/zeeor-placeholder.jpg'], imagePublicIds: built.imagePublicIds, sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, discount: input.salePrice ? Math.round((1 - Number(input.salePrice) / Number(input.price)) * 100) : 0, featuredPosition, flags: { ...(input.flags || { new: true, bestseller: false }), sale: Boolean(input.salePrice), featured: featuredPosition != null }, published: input.published !== false, attributes: attrs, hasSizes: cfg.fields.sizes.show !== false, hasColors: cfg.fields.colors.show !== false };
   mutateStore((store) => { const index = store.products.findIndex((p) => p.id === product.id); index >= 0 ? store.products.splice(index, 1, product) : store.products.push(product); return store; });
   res.json(product);
 });
@@ -388,7 +449,7 @@ app.delete('/api/admin/resellers/:id/listings/:listingId', requireAuth, requireR
 // General categories + this reseller's own private categories only — never another reseller's private ones.
 app.get('/api/reseller/categories', requireAuth, requireRole('reseller'), (req, res) => res.json(resellerCategoryNames(readStore(), req.auth.sub)));
 app.get('/api/reseller/listings', requireAuth, requireRole('reseller'), (req, res) => res.json(readStore().resellers.find((r) => r.id === req.auth.sub)?.listings || []));
-app.post('/api/reseller/listings', requireAuth, requireRole('reseller'), (req, res) => { const input = req.body; const allowed = resellerCategoryNames(readStore(), req.auth.sub); if (!allowed.includes(input.category)) return res.status(400).json({ error: 'Choose a category created by the owner, or your own private category' }); if (input.subcategory && !isValidSubcategory(readStore(), input.category, input.subcategory)) return res.status(400).json({ error: 'Pick a subcategory that belongs to this category' }); let built; try { built = buildVariants(input.colorBlocks); } catch (err) { return res.status(400).json({ error: err.message }); } const listing = { id: `l-${Date.now()}`, ...input, description: String(input.description || '').trim() || undefined, subcategory: String(input.subcategory || '').trim() || undefined, sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, images: built.images, imagePublicIds: built.imagePublicIds, active: true, createdAt: new Date().toISOString() }; mutateStore((store) => { const owner = store.resellers.find((r) => r.id === req.auth.sub); if (owner) owner.listings.unshift(listing); return store; }); res.status(201).json(listing); });
+app.post('/api/reseller/listings', requireAuth, requireRole('reseller'), (req, res) => { const input = req.body; const allowed = resellerCategoryNames(readStore(), req.auth.sub); if (!allowed.includes(input.category)) return res.status(400).json({ error: 'Choose a category created by the owner, or your own private category' }); if (input.subcategory && !isValidSubcategory(readStore(), input.category, input.subcategory)) return res.status(400).json({ error: 'Pick a subcategory that belongs to this category' }); let built, attrs; const cfg = formConfigFor(readStore(), input.category, input.subcategory); try { built = buildVariants(input.colorBlocks, cfg); attrs = buildAttributes(input.attributes, cfg); } catch (err) { return res.status(400).json({ error: err.message }); } const listing = { id: `l-${Date.now()}`, ...input, description: String(input.description || '').trim() || undefined, subcategory: String(input.subcategory || '').trim() || undefined, sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, images: built.images, imagePublicIds: built.imagePublicIds, active: true, createdAt: new Date().toISOString(), attributes: attrs, hasSizes: cfg.fields.sizes.show !== false, hasColors: cfg.fields.colors.show !== false }; mutateStore((store) => { const owner = store.resellers.find((r) => r.id === req.auth.sub); if (owner) owner.listings.unshift(listing); return store; }); res.status(201).json(listing); });
 app.patch('/api/reseller/listings/:id', requireAuth, requireRole('reseller'), (req, res) => {
   const before = readStore();
   const current = before.resellers.find((r) => r.id === req.auth.sub)?.listings.find((l) => l.id === req.params.id);
