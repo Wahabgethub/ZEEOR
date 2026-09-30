@@ -443,7 +443,34 @@ app.patch('/api/admin/cms', requireAuth, requireRole('owner'), (req, res) => { l
 app.get('/api/admin/resellers', requireAuth, requireRole('owner'), (_req, res) => res.json(readStore().resellers.map(({ passwordHash, ...r }) => r)));
 app.post('/api/admin/resellers', requireAuth, requireRole('owner'), (req, res) => { const username = String(req.body.username || '').trim(); const password = String(req.body.password || ''); const whatsapp = String(req.body.whatsapp || '').replace(/[^0-9]/g, ''); if (!/^[a-zA-Z0-9._-]{3,64}$/.test(username)) return res.status(400).json({ error: 'Username must be 3–64 letters, numbers, dots, underscores, or hyphens' }); if (password.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters' }); if (!whatsapp || whatsapp.length < 10) return res.status(400).json({ error: 'Enter a valid WhatsApp number with country code, e.g. 923001234567' }); if (readStore().resellers.some((entry) => entry.username.toLowerCase() === username.toLowerCase())) return res.status(409).json({ error: 'Username already exists' }); const reseller = { id: `r-${Date.now()}`, username, displayName: req.body.displayName || username, whatsapp, passwordHash: hashPassword(password), active: true, listings: [], createdAt: new Date().toISOString() }; mutateStore((store) => { store.resellers.push(reseller); return store; }); const { passwordHash, ...safe } = reseller; res.status(201).json(safe); });
 app.patch('/api/admin/resellers/:id', requireAuth, requireRole('owner'), (req, res) => { let changed; mutateStore((store) => { changed = store.resellers.find((entry) => entry.id === req.params.id); if (changed && req.body.active !== undefined) changed.active = Boolean(req.body.active); return store; }); changed ? res.json({ id: changed.id, username: changed.username, displayName: changed.displayName, active: changed.active !== false }) : res.status(404).json({ error: 'Seller not found' }); });
-app.delete('/api/admin/resellers/:id', requireAuth, requireRole('owner'), (req, res) => { mutateStore((store) => { store.resellers = store.resellers.filter((r) => r.id !== req.params.id); store.categories = (store.categories || []).filter((c) => c.resellerId !== req.params.id); return store; }); res.json({ ok: true }); });
+// Permanently removes a seller and everything that belongs to them: account, all listings, every photo (also on Cloudinary),
+// their private categories + subcategories (and any form rules on them), comments on their products and their notifications.
+// Customer orders are kept on purpose — they are the shop's sales records — but the seller can no longer log in or see them.
+app.delete('/api/admin/resellers/:id', requireAuth, requireRole('owner'), async (req, res) => {
+  const id = req.params.id; const before = readStore(); const seller = before.resellers.find((r) => r.id === id);
+  if (!seller) return res.status(404).json({ error: 'Seller not found' });
+  const publicIds = new Set(); const listingIds = new Set(); const listings = seller.listings || [];
+  for (const l of listings) {
+    listingIds.add(l.id);
+    (l.imagePublicIds || []).forEach((x) => x && publicIds.add(x));
+    Object.values(l.imagePublicIdsByColor || {}).flat().forEach((x) => x && publicIds.add(x));
+    (l.colorBlocks || []).forEach((b) => (b.imagePublicIds || []).forEach((x) => x && publicIds.add(x)));
+  }
+  const removedCategoryIds = new Set((before.categories || []).filter((c) => c && c.resellerId === id).map((c) => c.id));
+  const removedSubIds = new Set((before.subcategories || []).filter((x) => removedCategoryIds.has(x.categoryId)).map((x) => x.id));
+  mutateStore((store) => {
+    store.resellers = store.resellers.filter((r) => r.id !== id);
+    store.categories = (store.categories || []).filter((c) => !(c && c.resellerId === id));
+    store.subcategories = (store.subcategories || []).filter((x) => !removedCategoryIds.has(x.categoryId));
+    if (store.formConfigs) for (const key of [...removedCategoryIds, ...removedSubIds]) delete store.formConfigs[key];
+    store.comments = (store.comments || []).filter((c) => !listingIds.has(c.productId));
+    store.notifications = (store.notifications || []).filter((n) => n.resellerId !== id).map((n) => Array.isArray(n.readBy) ? { ...n, readBy: n.readBy.filter((x) => x !== id) } : n);
+    return store;
+  });
+  const results = await Promise.allSettled([...publicIds].map((pid) => deleteImage(pid)));
+  const failed = results.filter((r) => r.status === 'rejected').length;
+  res.json({ ok: true, listingsRemoved: listings.length, imagesRemoved: results.length - failed, imagesFailed: failed });
+});
 app.get('/api/admin/resellers/:id/listings', requireAuth, requireRole('owner'), (req, res) => { const reseller = readStore().resellers.find((r) => r.id === req.params.id); reseller ? res.json(reseller.listings || []) : res.status(404).json({ error: 'Seller not found' }); });
 app.patch('/api/admin/resellers/:id/listings/:listingId', requireAuth, requireRole('owner'), (req, res) => { let changed; mutateStore((store) => { const reseller = store.resellers.find((r) => r.id === req.params.id); changed = reseller?.listings.find((l) => l.id === req.params.listingId); if (changed) { if (req.body.price !== undefined) changed.price = Number(req.body.price); if (req.body.salePrice !== undefined) changed.salePrice = req.body.salePrice === '' ? null : Number(req.body.salePrice); if (req.body.title !== undefined) changed.title = String(req.body.title); if (req.body.category !== undefined) { if (String(req.body.category) !== changed.category && req.body.subcategory === undefined) changed.subcategory = undefined; changed.category = String(req.body.category); } if (req.body.subcategory !== undefined) changed.subcategory = String(req.body.subcategory || '').trim() || undefined; if (req.body.description !== undefined) changed.description = String(req.body.description).trim() || undefined; if (req.body.active !== undefined) changed.active = Boolean(req.body.active); } return store; }); changed ? res.json(changed) : res.status(404).json({ error: 'Listing not found' }); });
 app.delete('/api/admin/resellers/:id/listings/:listingId', requireAuth, requireRole('owner'), (req, res) => { let found = false; let imagePublicIds = []; mutateStore((store) => { const reseller = store.resellers.find((r) => r.id === req.params.id); if (!reseller) return store; const listing = reseller.listings.find((l) => l.id === req.params.listingId); if (listing) { found = true; imagePublicIds = listing.imagePublicIds || []; reseller.listings = reseller.listings.filter((l) => l.id !== req.params.listingId); } return store; }); if (!found) return res.status(404).json({ error: 'Listing not found' }); Promise.allSettled(imagePublicIds.map((id) => deleteImage(id))).catch(() => {}); res.json({ ok: true }); });

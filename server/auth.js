@@ -23,7 +23,9 @@ export function signUser(user) { return jwt.sign({ sub: user.id, role: user.role
 export function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Authentication required' });
-  try { req.auth = jwt.verify(token, secret()); next(); } catch { res.status(401).json({ error: 'Session expired' }); }
+  try { req.auth = jwt.verify(token, secret()); } catch { return res.status(401).json({ error: 'Session expired' }); }
+  if (req.auth?.role === 'reseller' && !readStore().resellers.some((r) => r.id === req.auth.sub)) return res.status(401).json({ error: 'This seller account no longer exists' });
+  next();
 }
 export function requireRole(...roles) { return (req, res, next) => roles.includes(req.auth?.role) ? next() : res.status(403).json({ error: 'Insufficient permissions' }); }
 export function authenticate(username, password) {

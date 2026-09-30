@@ -278,3 +278,7 @@ body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-r
 .main-nav{padding-top:72px}
 .main-nav .nav-close{position:absolute;top:14px;right:14px;width:46px;height:46px;padding:0;margin:0;border:0;border-bottom:0;display:flex;align-items:center;justify-content:center;color:var(--ink);background:transparent;border-radius:50%;font-size:0}
 .main-nav .nav-close:hover,.main-nav .nav-close:active{background:rgba(11,23,20,.08);color:var(--ink)}
+
+/* delete seller */
+.table-action.danger{color:#a12d2d;border-color:rgba(161,45,45,.45)}
+.table-action.danger:hover,.table-action.danger:active{background:#a12d2d;color:#fff;border-color:#a12d2d}
