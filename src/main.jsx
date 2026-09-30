@@ -155,7 +155,7 @@ function Header({ route, categories, products, cartCount, wishlistCount, user, s
     <button className="brand-lockup" onClick={() => go('home')}><span className="brand-word">ZEEOR</span></button>
     {menu && <button className="nav-backdrop" onClick={() => setMenu(false)} aria-label="Close menu" />}
     <nav className={`main-nav ${menu ? 'open' : ''}`}>
-      <button className="nav-close" onClick={() => setMenu(false)} aria-label="Close menu">×</button>
+      <button className="nav-close" onClick={() => setMenu(false)} aria-label="Close menu"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" /></svg></button>
       <button className={route === 'home' ? 'active' : ''} onClick={() => { go('home'); setMenu(false); }}>Home</button>
       <button className={route === 'shop' ? 'active' : ''} onClick={() => { setSearch(''); go('shop'); setMenu(false); }}>Shop</button>
       {categories.map((category) => <button className={`nav-category ${route === `shop/${encodeURIComponent(category)}` ? 'active' : ''}`} key={category} onClick={() => { setSearch(''); go(`shop/${encodeURIComponent(category)}`); setMenu(false); }}>{category}</button>)}

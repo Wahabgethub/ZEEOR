@@ -273,3 +273,8 @@ body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-r
 /* announcement bar: always one line (long owner text is cut with … instead of overflowing) */
 .announcement{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 14px}
 @media(max-width:600px){.announcement{font-size:10.5px!important;letter-spacing:.03em;gap:8px}}
+
+/* mobile menu: close button sits in the top-right corner, dark and larger, with no line under it */
+.main-nav{padding-top:72px}
+.main-nav .nav-close{position:absolute;top:14px;right:14px;width:46px;height:46px;padding:0;margin:0;border:0;border-bottom:0;display:flex;align-items:center;justify-content:center;color:var(--ink);background:transparent;border-radius:50%;font-size:0}
+.main-nav .nav-close:hover,.main-nav .nav-close:active{background:rgba(11,23,20,.08);color:var(--ink)}
