@@ -103,7 +103,7 @@ function App() {
   useEffect(() => { localStorage.setItem('zeeor_wishlist', JSON.stringify(wishlist)); }, [wishlist]);
   useEffect(() => { if (toast) { const timeout = setTimeout(() => setToast(''), 2500); return () => clearTimeout(timeout); } }, [toast]);
 
-  const go = (next) => { window.location.hash = next; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const go = (next) => { window.location.hash = next; window.scrollTo({ top: 0, behavior: window.matchMedia && window.matchMedia('(hover: none)').matches ? 'auto' : 'smooth' }); };
   const addToCart = (product, size = product.sizes?.[0], color = product.colors?.[0]) => { setCart((items) => { const key = `${product.id}-${size}-${color}`; const found = items.find((item) => item.key === key); return found ? items.map((item) => item.key === key ? { ...item, quantity: item.quantity + 1 } : item) : [...items, { key, productId: product.id, name: product.name, image: product.images?.[0], size, color, quantity: 1, regularPrice: product.price, unitPrice: product.salePrice || product.price }]; }); setToast('Added to cart'); };
   const buyNow = (product, size = product.sizes?.[0], color = product.colors?.[0]) => { setBuyItem({ key: `${product.id}-${size}-${color}`, productId: product.id, name: product.name, image: product.images?.[0], size, color, quantity: 1, regularPrice: product.price, unitPrice: product.salePrice || product.price }); go('buy'); };
   const toggleWish = (product) => { setWishlist((items) => items.some((item) => item.id === product.id) ? items.filter((item) => item.id !== product.id) : [...items, product]); setToast(wishlist.some((item) => item.id === product.id) ? 'Removed from wishlist' : 'Saved to wishlist'); };
