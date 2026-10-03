@@ -13,6 +13,7 @@ import { notifyNewOrder, notifyOwnersNewListing } from './emailNotifications.js'
 
 const app = express();
 app.disable('x-powered-by');
+app.use('/api', (req, res, next) => { if (req.method === 'GET') res.set('Cache-Control', 'no-store'); next(); });
 // Behind Cloudflare/nginx, req.protocol otherwise always reads 'http'. This
 // makes Express trust X-Forwarded-Proto so req.protocol is correct — used
 // only by the new SEO routes' fallback URL detection (server/seo.js prefers
