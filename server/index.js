@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authenticate, ensureDefaultResellers, hashPassword, requireAuth, requireRole, signUser } from './auth.js';
 import { categoryList, ensureCategoriesShape, ensureCommentsShape, ensureSubcategoriesShape, isValidSubcategory, subcategoryList, subcategoryMap, generalCategoryNames, mutateStore, productTotalStock, publicComment, publicProduct, readStore, resellerCategoryNames, visibleCategoryNames } from './db.js';
-import { deleteImage, uploadImage } from './imageStorage.js';
+import { deleteImage, uploadImage, ImageUploadError } from './imageStorage.js';
 import { createSeoRouter, createHomeSeo } from './seoRoutes.js';
 import { isValidEmail } from './mailer.js';
 import { notifyNewOrder, notifyOwnersNewListing } from './emailNotifications.js';
@@ -507,7 +507,28 @@ app.patch('/api/reseller/listings/:id', requireAuth, requireRole('reseller'), (r
 });
 app.delete('/api/reseller/listings/:id', requireAuth, requireRole('reseller'), async (req, res) => { const store = readStore(); const owner = store.resellers.find((r) => r.id === req.auth.sub); const listing = owner?.listings.find((l) => l.id === req.params.id); try { await Promise.all((listing?.imagePublicIds || []).map((publicId) => deleteImage(publicId))); mutateStore((next) => { const currentOwner = next.resellers.find((r) => r.id === req.auth.sub); if (currentOwner) currentOwner.listings = currentOwner.listings.filter((l) => l.id !== req.params.id); return next; }); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: error.message }); } });
 app.delete('/api/reseller/listings/:id/images/:index', requireAuth, requireRole('reseller'), async (req, res) => { const store = readStore(); const owner = store.resellers.find((r) => r.id === req.auth.sub); const listing = owner?.listings.find((l) => l.id === req.params.id); const index = Number(req.params.index); try { await deleteImage(listing?.imagePublicIds?.[index]); mutateStore((next) => { const currentOwner = next.resellers.find((r) => r.id === req.auth.sub); const current = currentOwner?.listings.find((l) => l.id === req.params.id); if (current) { current.images = (current.images || []).filter((_url, imageIndex) => imageIndex !== index); current.imagePublicIds = (current.imagePublicIds || []).filter((_id, imageIndex) => imageIndex !== index); } return next; }); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: error.message }); } });
-app.post('/api/upload', requireAuth, requireRole('owner', 'reseller'), upload.array('images', 5), async (req, res) => { try { const results = await Promise.all((req.files || []).map((file) => uploadImage(file.buffer))); res.json(results); } catch (error) { res.status(502).json({ error: error.message }); } });
+// Photo upload: multipart in memory -> Cloudinary. Every failure answers with JSON { error: "plain-language reason" }.
+const readPhotos = (req, res, next) => upload.array('images', 5)(req, res, (err) => {
+  if (!err) return next();
+  if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'This photo is larger than 8 MB — please choose a smaller one.' });
+  if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') return res.status(400).json({ error: 'You can upload at most 5 photos at a time.' });
+  return res.status(400).json({ error: 'The upload was interrupted before it finished (weak network?) — please try again.' });
+});
+app.post('/api/upload', requireAuth, requireRole('owner', 'reseller'), readPhotos, async (req, res) => {
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ error: 'No photo was received — please choose the photo again.' });
+  const notImage = files.find((file) => !String(file.mimetype || '').startsWith('image/'));
+  if (notImage) return res.status(400).json({ error: `"${notImage.originalname}" is not a photo. Please choose a JPG or PNG image.` });
+  const results = await Promise.allSettled(files.map((file) => uploadImage(file.buffer)));
+  const failed = results.find((r) => r.status === 'rejected');
+  if (failed) {
+    // do not leave half-uploaded photos behind on Cloudinary
+    await Promise.allSettled(results.filter((r) => r.status === 'fulfilled').map((r) => deleteImage(r.value.publicId)));
+    const error = failed.reason; console.error('[upload] failed:', error?.message);
+    return res.status(error instanceof ImageUploadError ? error.status : 502).json(error instanceof ImageUploadError ? { error: error.message, retryable: error.retryable } : { error: 'Photo upload failed on the server — please try again.', retryable: true });
+  }
+  res.json(results.map((r) => r.value));
+});
 
 app.use(createHomeSeo({ readStore, visibleCategoryNames, distIndexPath: path.join(root, '..', 'dist', 'index.html') }));
 if (process.env.NODE_ENV === 'production') app.use(express.static(path.join(root, '..', 'dist')));
@@ -517,5 +538,6 @@ if (process.env.NODE_ENV === 'production') app.use(express.static(path.join(root
 // or below it changes behaviour.
 app.use(createSeoRouter({ readStore, catalogItems, publicProduct, visibleCategoryNames }));
 app.get('*', (req, res, next) => req.path.startsWith('/api/') ? next() : res.sendFile(path.join(root, '..', 'index.html')));
+app.use((err, req, res, next) => { if (res.headersSent) return next(err); const status = Number(err.status || err.statusCode) || 500; if (status >= 500) console.error('[server error]', req.method, req.path, err.message); if (req.path.startsWith('/api/')) return res.status(status).json({ error: status >= 500 ? 'Something went wrong on the server — please try again.' : (err.type === 'entity.parse.failed' ? 'The request could not be read.' : err.message) }); res.status(status).send('Server error'); });
 const port = Number(process.env.PORT || 4000);
 app.listen(port, '0.0.0.0', () => console.log(`ZEEOR API listening on ${port}`));
