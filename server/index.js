@@ -90,7 +90,7 @@ function buildVariants(colorBlocks, cfg = defaultFormConfig(), { allowZeroStock 
     for (const b of blocks) Object.keys(b.stocks || {}).forEach((s) => { if (String(s).trim()) sizeSet.add(String(s).trim()); });
     sizes = [...sizeSet];
     if (!sizes.length) throw new Error('Add at least one size with a stock quantity');
-    if (sizes.length > 4) throw new Error('Maximum 4 sizes per product');
+    if (sizes.length > 50) throw new Error('Maximum 50 sizes per product');
   } else {
     sizes = ['One Size'];
     for (const b of blocks) if (String(b.stocks?.['One Size'] ?? '').trim() === '') throw new Error('Stock quantity is required');
