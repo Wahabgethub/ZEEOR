@@ -75,9 +75,9 @@ function buildAttributes(input, cfg) {
 }
 // Turns client-submitted colour/design blocks — each with its own photo set and per-size stock — into the full variant shape.
 // cfg decides whether sizes / colours apply at all; stock quantity is mandatory in every mode.
-function buildVariants(colorBlocks, cfg = defaultFormConfig()) {
+function buildVariants(colorBlocks, cfg = defaultFormConfig(), { allowZeroStock = false } = {}) {
   const useColors = cfg.fields.colors.show !== false; const useSizes = cfg.fields.sizes.show !== false;
-  let blocks = Array.isArray(colorBlocks) ? colorBlocks : [];
+  let blocks = (Array.isArray(colorBlocks) ? colorBlocks : []).map((b) => ({ ...b, images: (b?.images || []).filter((u) => typeof u === 'string' && /^(https?:\/\/|\/)/.test(u)), imagePublicIds: (b?.imagePublicIds || []).filter((id) => typeof id === 'string' && id.startsWith('zeeor/')) }));
   blocks = useColors ? blocks.filter((b) => String(b?.name || '').trim()) : blocks.slice(0, 1).map((b) => ({ ...b, name: 'Default' }));
   if (!blocks.length) throw new Error(useColors ? 'Add at least one colour/design with photos and stock' : 'Add photos and stock quantity for this product');
   if (blocks.length > 4) throw new Error('Maximum 4 colours/designs per product');
@@ -102,12 +102,49 @@ function buildVariants(colorBlocks, cfg = defaultFormConfig()) {
     imagePublicIdsByColor[name] = b.imagePublicIds || [];
     for (const size of sizes) inventory[`${name}-${size}`] = Math.max(0, Number(b.stocks?.[size]) || 0);
   }
-  if (Object.values(inventory).reduce((sum, v) => sum + v, 0) < 1) throw new Error('Stock quantity is required — enter how many pieces are available');
+  if (!allowZeroStock && Object.values(inventory).reduce((sum, v) => sum + v, 0) < 1) throw new Error('Stock quantity is required — enter how many pieces are available');
   const colors = names;
   const images = galleryByColor[names[0]] || [];
   const imagePublicIds = Object.values(imagePublicIdsByColor).flat();
   return { colors, sizes, inventory, galleryByColor, imagePublicIdsByColor, images, imagePublicIds };
 }
+// ---- Full listing edit, shared by the seller (own listings) and the owner (any seller's listing) ----
+// Validates everything first and only then writes, so a rejected edit never leaves a half-changed listing.
+class EditError extends Error { constructor(message, status = 400) { super(message); this.status = status; } }
+function applyListingEdit(store, listing, body, { allowedCategories } = {}) {
+  const next = {};
+  if (body.title !== undefined) { const title = String(body.title).trim(); if (!title) throw new EditError('The title cannot be empty'); next.title = title.slice(0, 150); }
+  if (body.description !== undefined) next.description = String(body.description).trim().slice(0, 4000) || undefined;
+  if (body.price !== undefined) { const price = Number(body.price); if (!Number.isFinite(price) || price <= 0) throw new EditError('Enter a valid price'); next.price = price; }
+  if (body.salePrice !== undefined) { if (body.salePrice === '' || body.salePrice === null) next.salePrice = null; else { const sale = Number(body.salePrice); if (!Number.isFinite(sale) || sale <= 0) throw new EditError('Enter a valid sale price (or leave it empty)'); next.salePrice = sale; } }
+  if (body.price !== undefined || body.salePrice !== undefined) { const price = next.price ?? Number(listing.price); const sale = next.salePrice !== undefined ? next.salePrice : listing.salePrice; if (sale && Number(sale) >= price) throw new EditError('The sale price must be lower than the regular price'); }
+  const category = body.category !== undefined ? String(body.category) : listing.category;
+  if (body.category !== undefined && allowedCategories && !allowedCategories.includes(category)) throw new EditError('Choose a category created by the owner, or your own private category');
+  const sub = body.subcategory !== undefined ? String(body.subcategory || '').trim() : (category !== listing.category ? '' : listing.subcategory || '');
+  if (sub && !isValidSubcategory(store, category, sub)) throw new EditError('Pick a subcategory that belongs to this category');
+  next.category = category; next.subcategory = sub || undefined;
+  if (body.delivery !== undefined) next.delivery = String(body.delivery).trim().slice(0, 60) || listing.delivery;
+  // The listing keeps its own structure (sizes / colours) — later rule changes on the category never break an existing listing.
+  const cfg = formConfigFor(store, category, sub);
+  cfg.fields.sizes.show = listing.hasSizes !== false; cfg.fields.colors.show = listing.hasColors !== false;
+  let removedPublicIds = [];
+  if (body.colorBlocks !== undefined) {
+    const built = buildVariants(body.colorBlocks, cfg, { allowZeroStock: true });
+    Object.assign(next, { sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, images: built.images, imagePublicIds: built.imagePublicIds });
+    const before = new Set([...(listing.imagePublicIds || []), ...Object.values(listing.imagePublicIdsByColor || {}).flat()].filter(Boolean));
+    const kept = new Set(built.imagePublicIds);
+    removedPublicIds = [...before].filter((id) => !kept.has(id));
+  }
+  if (body.attributes !== undefined) next.attributes = buildAttributes(body.attributes, cfg);
+  Object.assign(listing, next);
+  return { removedPublicIds };
+}
+const finishListingEdit = (res, { updated, removed, failure }) => {
+  if (failure) return res.status(failure.status || 400).json({ error: failure.message });
+  if (!updated) return res.status(404).json({ error: 'Listing not found' });
+  Promise.allSettled(removed.map((id) => deleteImage(id))).catch(() => {}); // photos the seller removed are also deleted from Cloudinary
+  return res.json(updated);
+};
 const resellerProduct = (listing, reseller) => { const sizes = listing.sizes || ['S', 'M', 'L', 'XL']; const colors = listing.colors || ['Black']; const inventory = listing.inventory || Object.fromEntries(colors.flatMap((color) => sizes.map((size) => [`${color}-${size}`, 5]))); return { ...listing, name: listing.title, shortDescription: listing.shortDescription || 'A considered partner piece.', description: listing.description || 'A considered piece from the ZEEOR partner edit.', sku: listing.sku || listing.id, collection: listing.collection || 'Partner Edit', gender: listing.gender || 'Unisex', sizes, colors, inventory, galleryByColor: listing.galleryByColor || {}, tags: listing.tags || [], flags: { featured: false, new: true, bestseller: false, sale: Boolean(listing.salePrice) }, resellerId: reseller.id, sellerWhatsapp: reseller.whatsapp, sellerName: reseller.displayName, source: 'reseller', published: listing.active !== false }; };
 const catalogItems = (store) => [...store.products, ...store.resellers.filter((reseller) => reseller.active !== false).flatMap((reseller) => (reseller.listings || []).filter((listing) => listing.active !== false).map((listing) => resellerProduct(listing, reseller)))];
 
@@ -476,34 +513,30 @@ app.delete('/api/admin/resellers/:id', requireAuth, requireRole('owner'), async 
   res.json({ ok: true, listingsRemoved: listings.length, imagesRemoved: results.length - failed, imagesFailed: failed });
 });
 app.get('/api/admin/resellers/:id/listings', requireAuth, requireRole('owner'), (req, res) => { const reseller = readStore().resellers.find((r) => r.id === req.params.id); reseller ? res.json(reseller.listings || []) : res.status(404).json({ error: 'Seller not found' }); });
-app.patch('/api/admin/resellers/:id/listings/:listingId', requireAuth, requireRole('owner'), (req, res) => { let changed; mutateStore((store) => { const reseller = store.resellers.find((r) => r.id === req.params.id); changed = reseller?.listings.find((l) => l.id === req.params.listingId); if (changed) { if (req.body.price !== undefined) changed.price = Number(req.body.price); if (req.body.salePrice !== undefined) changed.salePrice = req.body.salePrice === '' ? null : Number(req.body.salePrice); if (req.body.title !== undefined) changed.title = String(req.body.title); if (req.body.category !== undefined) { if (String(req.body.category) !== changed.category && req.body.subcategory === undefined) changed.subcategory = undefined; changed.category = String(req.body.category); } if (req.body.subcategory !== undefined) changed.subcategory = String(req.body.subcategory || '').trim() || undefined; if (req.body.description !== undefined) changed.description = String(req.body.description).trim() || undefined; if (req.body.active !== undefined) changed.active = Boolean(req.body.active); } return store; }); changed ? res.json(changed) : res.status(404).json({ error: 'Listing not found' }); });
+app.patch('/api/admin/resellers/:id/listings/:listingId', requireAuth, requireRole('owner'), (req, res) => {
+  const result = { updated: null, removed: [], failure: null };
+  mutateStore((store) => {
+    const listing = store.resellers.find((r) => r.id === req.params.id)?.listings.find((l) => l.id === req.params.listingId);
+    if (!listing) return store;
+    try { result.removed = applyListingEdit(store, listing, req.body, { allowedCategories: resellerCategoryNames(store, req.params.id) }).removedPublicIds; if (req.body.active !== undefined) listing.active = Boolean(req.body.active); result.updated = listing; } catch (error) { result.failure = error; }
+    return store;
+  });
+  finishListingEdit(res, result);
+});
 app.delete('/api/admin/resellers/:id/listings/:listingId', requireAuth, requireRole('owner'), (req, res) => { let found = false; let imagePublicIds = []; mutateStore((store) => { const reseller = store.resellers.find((r) => r.id === req.params.id); if (!reseller) return store; const listing = reseller.listings.find((l) => l.id === req.params.listingId); if (listing) { found = true; imagePublicIds = listing.imagePublicIds || []; reseller.listings = reseller.listings.filter((l) => l.id !== req.params.listingId); } return store; }); if (!found) return res.status(404).json({ error: 'Listing not found' }); Promise.allSettled(imagePublicIds.map((id) => deleteImage(id))).catch(() => {}); res.json({ ok: true }); });
 // General categories + this reseller's own private categories only — never another reseller's private ones.
 app.get('/api/reseller/categories', requireAuth, requireRole('reseller'), (req, res) => res.json(resellerCategoryNames(readStore(), req.auth.sub)));
 app.get('/api/reseller/listings', requireAuth, requireRole('reseller'), (req, res) => res.json(readStore().resellers.find((r) => r.id === req.auth.sub)?.listings || []));
 app.post('/api/reseller/listings', requireAuth, requireRole('reseller'), (req, res) => { const input = req.body; const allowed = resellerCategoryNames(readStore(), req.auth.sub); if (!allowed.includes(input.category)) return res.status(400).json({ error: 'Choose a category created by the owner, or your own private category' }); if (input.subcategory && !isValidSubcategory(readStore(), input.category, input.subcategory)) return res.status(400).json({ error: 'Pick a subcategory that belongs to this category' }); let built, attrs; const cfg = formConfigFor(readStore(), input.category, input.subcategory); try { built = buildVariants(input.colorBlocks, cfg); attrs = buildAttributes(input.attributes, cfg); } catch (err) { return res.status(400).json({ error: err.message }); } const listing = { id: `l-${Date.now()}`, ...input, description: String(input.description || '').trim() || undefined, subcategory: String(input.subcategory || '').trim() || undefined, sizes: built.sizes, colors: built.colors, inventory: built.inventory, galleryByColor: built.galleryByColor, imagePublicIdsByColor: built.imagePublicIdsByColor, images: built.images, imagePublicIds: built.imagePublicIds, active: true, createdAt: new Date().toISOString(), attributes: attrs, hasSizes: cfg.fields.sizes.show !== false, hasColors: cfg.fields.colors.show !== false }; mutateStore((store) => { const owner = store.resellers.find((r) => r.id === req.auth.sub); if (owner) owner.listings.unshift(listing); return store; }); res.status(201).json(listing); const seller = readStore().resellers.find((r) => r.id === req.auth.sub); if (seller) setImmediate(() => notifyOwnersNewListing({ listing, seller }).catch((error) => console.error('[mail] listing email error:', error.message))); });
 app.patch('/api/reseller/listings/:id', requireAuth, requireRole('reseller'), (req, res) => {
-  const before = readStore();
-  const current = before.resellers.find((r) => r.id === req.auth.sub)?.listings.find((l) => l.id === req.params.id);
-  if (!current) return res.status(404).json({ error: 'Listing not found' });
-  const b = req.body;
-  const category = b.category !== undefined ? String(b.category) : current.category;
-  if (b.category !== undefined && !resellerCategoryNames(before, req.auth.sub).includes(category)) return res.status(400).json({ error: 'Choose a category created by the owner, or your own private category' });
-  const sub = b.subcategory !== undefined ? String(b.subcategory || '').trim() : (category !== current.category ? '' : current.subcategory || '');
-  if (sub && !isValidSubcategory(before, category, sub)) return res.status(400).json({ error: 'Pick a subcategory that belongs to this category' });
-  let updated;
+  const result = { updated: null, removed: [], failure: null };
   mutateStore((store) => {
     const listing = store.resellers.find((r) => r.id === req.auth.sub)?.listings.find((l) => l.id === req.params.id);
-    if (listing) {
-      if (b.title !== undefined && String(b.title).trim()) listing.title = String(b.title).trim();
-      if (b.description !== undefined) listing.description = String(b.description).trim() || undefined;
-      listing.category = category;
-      listing.subcategory = sub || undefined;
-      updated = listing;
-    }
+    if (!listing) return store;
+    try { result.removed = applyListingEdit(store, listing, req.body, { allowedCategories: resellerCategoryNames(store, req.auth.sub) }).removedPublicIds; result.updated = listing; } catch (error) { result.failure = error; }
     return store;
   });
-  res.json(updated);
+  finishListingEdit(res, result);
 });
 app.delete('/api/reseller/listings/:id', requireAuth, requireRole('reseller'), async (req, res) => { const store = readStore(); const owner = store.resellers.find((r) => r.id === req.auth.sub); const listing = owner?.listings.find((l) => l.id === req.params.id); try { await Promise.all((listing?.imagePublicIds || []).map((publicId) => deleteImage(publicId))); mutateStore((next) => { const currentOwner = next.resellers.find((r) => r.id === req.auth.sub); if (currentOwner) currentOwner.listings = currentOwner.listings.filter((l) => l.id !== req.params.id); return next; }); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: error.message }); } });
 app.delete('/api/reseller/listings/:id/images/:index', requireAuth, requireRole('reseller'), async (req, res) => { const store = readStore(); const owner = store.resellers.find((r) => r.id === req.auth.sub); const listing = owner?.listings.find((l) => l.id === req.params.id); const index = Number(req.params.index); try { await deleteImage(listing?.imagePublicIds?.[index]); mutateStore((next) => { const currentOwner = next.resellers.find((r) => r.id === req.auth.sub); const current = currentOwner?.listings.find((l) => l.id === req.params.id); if (current) { current.images = (current.images || []).filter((_url, imageIndex) => imageIndex !== index); current.imagePublicIds = (current.imagePublicIds || []).filter((_id, imageIndex) => imageIndex !== index); } return next; }); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: error.message }); } });

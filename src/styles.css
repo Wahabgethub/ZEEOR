@@ -334,3 +334,14 @@ body{font-weight:400}
 .product-meta h3{font-family:var(--sans);font-weight:600;font-size:15px;line-height:1.4;letter-spacing:.005em;color:var(--ink);min-height:2.8em;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
 .price-block{margin-top:8px}
 @media(max-width:900px){.product-meta h3{font-size:14px}}
+
+
+/* ===== batch35: readable description + listing editor ===== */
+.accordions details>summary{cursor:pointer}
+.accordions details[open]>summary span{transform:rotate(45deg)}
+.accordions summary span{transition:transform .2s}
+.accordions .description-text{margin:14px 0 4px;color:var(--ink);font:400 15.5px/1.75 var(--sans);letter-spacing:0;white-space:pre-line;font-style:normal;max-width:60ch}
+.detail-attrs{margin-top:18px}
+.listing-editor{margin:12px 0 22px;padding:20px;border:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;gap:14px}
+.listing-editor .editor-title{margin:0;font:700 16px var(--sans);letter-spacing:.04em}
+.reseller-price-row{flex-wrap:wrap}
