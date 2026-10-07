@@ -345,3 +345,8 @@ body{font-weight:400}
 .listing-editor{margin:12px 0 22px;padding:20px;border:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;gap:14px}
 .listing-editor .editor-title{margin:0;font:700 16px var(--sans);letter-spacing:.04em}
 .reseller-price-row{flex-wrap:wrap}
+
+/* batch37: no piece counts on the shop page — keep an even gap above the grid */
+.shop-grid{margin-top:26px}
+.catalog-count{margin:22px 0 0}
+.catalog-count+.shop-grid{margin-top:18px}
