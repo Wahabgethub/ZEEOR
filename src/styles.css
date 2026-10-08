@@ -350,3 +350,9 @@ body{font-weight:400}
 .shop-grid{margin-top:26px}
 .catalog-count{margin:22px 0 0}
 .catalog-count+.shop-grid{margin-top:18px}
+
+
+/* ===== batch38: product gallery shows the WHOLE photo (head to shoes); colour tag on each photo ===== */
+.gallery-scroll-item{position:relative;background:#e9e6de}
+.gallery-scroll-item img{object-fit:contain;object-position:center}
+.photo-color-tag{position:absolute;left:12px;bottom:12px;padding:6px 10px;background:rgba(255,255,255,.88);color:var(--ink);font:600 12px var(--sans);letter-spacing:.06em;text-transform:uppercase;pointer-events:none}

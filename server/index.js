@@ -469,15 +469,25 @@ app.delete('/api/admin/products/:id/images/:index', requireAuth, requireRole('ow
 // every seller's order list, and the "New order ..." notifications sellers got for it. Stock is NOT restored:
 // stock is reduced when an order is placed, and sold-out products are auto-removed, so there is nothing safe to give back.
 app.delete('/api/admin/orders/:id', requireAuth, requireRole('owner'), (req, res) => {
-  let found = false;
+  // ?restock=1 puts the ordered pieces back into stock (for cancelled / returned orders). Default: stock untouched (fake or test orders).
+  const restock = req.query.restock === '1';
+  let found = false; let restored = 0; let skipped = 0;
   mutateStore((store) => {
-    const before = store.orders.length;
+    const order = store.orders.find((o) => o.id === req.params.id);
+    if (!order) return store;
+    found = true;
+    if (restock) {
+      for (const item of order.items || []) {
+        const holder = item.resellerId ? store.resellers.find((r) => r.id === item.resellerId)?.listings.find((l) => l.id === item.productId) : store.products.find((p) => p.id === item.productId);
+        const key = `${item.color}-${item.size}`;
+        if (holder?.inventory && key in holder.inventory) { holder.inventory[key] = Math.max(0, Number(holder.inventory[key]) || 0) + (Number(item.quantity) || 0); restored += Number(item.quantity) || 0; } else skipped += Number(item.quantity) || 0;
+      }
+    }
     store.orders = store.orders.filter((o) => o.id !== req.params.id);
-    found = store.orders.length < before;
-    if (found) store.notifications = (store.notifications || []).filter((n) => !String(n.message || '').includes(`New order ${req.params.id} `));
+    store.notifications = (store.notifications || []).filter((n) => !String(n.message || '').includes(`New order ${req.params.id} `));
     return store;
   });
-  found ? res.json({ ok: true }) : res.status(404).json({ error: 'Order not found' });
+  found ? res.json({ ok: true, restored, skipped }) : res.status(404).json({ error: 'Order not found' });
 });
 app.patch('/api/admin/orders/:id', requireAuth, requireRole('owner'), (req, res) => { let changed; mutateStore((store) => { changed = store.orders.find((o) => o.id === req.params.id); if (changed) changed.status = req.body.status; return store; }); changed ? res.json(changed) : res.status(404).json({ error: 'Order not found' }); });
 app.patch('/api/admin/cms', requireAuth, requireRole('owner'), (req, res) => { let cms; if (req.body.heroImage && !(String(req.body.heroImage).startsWith('/') || String(req.body.heroImage).includes('res.cloudinary.com'))) return res.status(400).json({ error: 'Hero images must be local or hosted on Cloudinary' }); mutateStore((store) => { store.cms = { ...store.cms, ...req.body }; cms = store.cms; return store; }); res.json(cms); });
